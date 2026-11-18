@@ -1,0 +1,50 @@
+name: aeppo
+
+description: Statically scan a repository with aeppo.
+
+author: emanuellzoe
+
+inputs:
+  path:
+    description: Repository file or directory to scan, relative to the workspace or absolute.
+    required: false
+    default: .
+  format:
+    description: Finding output format (text or json).
+    required: false
+    default: text
+  exclude:
+    description: Newline-separated relative path globs to exclude.
+    required: false
+    default: ""
+  max-file-size:
+    description: Skip files larger than this many bytes.
+    required: false
+    default: "1048576"
+  python-version:
+    description: Python version used to run aeppo.
+    required: false
+    default: "3.12"
+  fail-on-findings:
+    description: Fail the workflow when aeppo reports findings.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run aeppo scan
+      shell: bash
+      env:
+        AEPPO_ACTION_PATH: ${{ github.action_path }}
+        AEPPO_SCAN_PATH: ${{ inputs.path }}
+        AEPPO_FORMAT: ${{ inputs.format }}
+        AEPPO_EXCLUDES: ${{ inputs.exclude }}
+        AEPPO_MAX_FILE_SIZE: ${{ inputs.max-file-size }}
+        AEPPO_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+      run: python "$AEPPO_ACTION_PATH/scripts/action_entry.py"

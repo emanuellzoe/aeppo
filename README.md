@@ -47,6 +47,33 @@ Exit codes:
 - `1`: scan completed and findings were reported
 - `2`: target could not be scanned or arguments were invalid
 
+## GitHub Action
+
+Add aeppo to a workflow after checking out the repository:
+
+```yaml
+name: Security scan
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  aeppo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<full-commit-SHA>
+      - uses: emanuellzoe/aeppo@main
+        with:
+          path: .
+          format: json
+          exclude: |
+            **/generated/**
+          max-file-size: "1048576"
+          fail-on-findings: "true"
+```
+
+Replace the checkout placeholder with its verified full commit SHA. For production use, pin aeppo to a reviewed full commit SHA instead of a moving branch reference. The action runs the scanner on the GitHub runner, does not execute scanned code, and requires only repository read permission. Findings fail the job by default; set `fail-on-findings: "false"` to report findings without failing the job.
+
 ## Current rules
 
 | ID | Detection | Notes |
