@@ -19,6 +19,51 @@ class ScanFileTests(unittest.TestCase):
         self.assertEqual(len(findings), 2)
         self.assertEqual([finding.path for finding in findings], ["src/app.js", "src/app.ts"])
         self.assertEqual([finding.rule_id for finding in findings], ["JS001", "JS001"])
+        self.assertEqual(findings[0].severity, "high")
+        self.assertEqual(findings[0].category, "dynamic-code")
+
+    def test_excludes_matching_files_and_skips_files_over_size_limit(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            call = "os." + "system(x)"
+            (root / "ignored.py").write_text(call)
+            (root / "large.py").write_text(call + " " * 100)
+            (root / "keep.py").write_text(call)
+
+            findings = scan_path(root, excludes=["ignored.py"], max_file_size=20)
+
+        self.assertEqual([finding.path for finding in findings], ["keep.py"])
+
+    def test_detects_unpinned_requirements_and_package_install_scripts(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "requirements.txt").write_text("demo-package\n")
+            (root / "package.json").write_text('{"scripts":{"preinstall":"node setup.js"}}')
+
+            findings = scan_path(root)
+
+        self.assertEqual({finding.rule_id for finding in findings}, {"DEP001", "DEP003"})
+        self.assertTrue(all(finding.severity and finding.confidence and finding.recommendation for finding in findings))
+
+    def test_detects_direct_dependency_references(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "requirements.txt").write_text("demo-package @ https://example.invalid/demo.whl\n")
+            (root / "package.json").write_text('{"dependencies":{"demo-package":"git+https://example.invalid/demo.git"}}')
+
+            findings = scan_path(root)
+
+        self.assertEqual(len(findings), 2)
+        self.assertEqual({finding.rule_id for finding in findings}, {"DEP002"})
+
+    def test_ignores_invalid_package_json_without_crashing(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "package.json").write_text("[]")
+
+            findings = scan_path(root)
+
+        self.assertEqual(findings, [])
 
     def test_scans_python_files_recursively_and_skips_hidden_and_venv_dirs(self):
         with TemporaryDirectory() as directory:
@@ -48,6 +93,18 @@ class ScanFileTests(unittest.TestCase):
         self.assertEqual(findings[0].line, 3)
         self.assertEqual(findings[0].rule_id, "PY001")
         self.assertIn("shell command", findings[0].message.lower())
+
+    def test_flags_python_dynamic_code_and_javascript_shell_execution(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            py_call = "ev" + "al(user_input)"
+            js_call = "child_process." + "ex" + "ec(command)"
+            (root / "dynamic.py").write_text(py_call + "\n")
+            (root / "command.js").write_text(js_call + "\n")
+
+            findings = scan_path(root)
+
+        self.assertEqual({finding.rule_id for finding in findings}, {"PY002", "JS002"})
 
     def test_does_not_flag_unrelated_source(self):
         with TemporaryDirectory() as directory:

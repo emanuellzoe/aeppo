@@ -6,6 +6,19 @@ from aeppo.scanner import scan_path
 
 
 class ScannerSecretTests(unittest.TestCase):
+    def test_scans_environment_configuration_file_for_secret_patterns(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / ".env"
+            key = "AKIA" + "IOSFODNN7EXAMPLE"
+            source.write_text("AWS_ACCESS_KEY_ID=" + key + "\n")
+
+            findings = scan_path(root)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "SEC001")
+        self.assertEqual(findings[0].path, ".env")
+
     def test_detects_github_personal_access_token_pattern(self):
         with TemporaryDirectory() as directory:
             source = Path(directory) / "config.py"

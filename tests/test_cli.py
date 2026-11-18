@@ -23,6 +23,23 @@ class CliTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual(payload[0]["path"], "bad.py")
         self.assertEqual(payload[0]["rule_id"], "PY001")
+        self.assertEqual(payload[0]["severity"], "medium")
+        self.assertEqual(payload[0]["category"], "command-execution")
+
+    def test_scan_command_accepts_exclude_and_max_file_size(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            call = "os." + "system" + "(user_input)"
+            (root / "skip.py").write_text(call)
+            (root / "keep.py").write_text(call)
+            output = StringIO()
+
+            with redirect_stdout(output):
+                result = main(["scan", str(root), "--exclude", "skip.py", "--max-file-size", "100"])
+
+        self.assertEqual(result, 1)
+        self.assertIn("keep.py", output.getvalue())
+        self.assertNotIn("skip.py", output.getvalue())
 
     def test_scan_command_reports_findings_and_returns_one(self):
         with TemporaryDirectory() as directory:
@@ -35,7 +52,9 @@ class CliTests(unittest.TestCase):
                 result = main(["scan", str(root)])
 
         self.assertEqual(result, 1)
-        self.assertIn("bad.py:2: [PY001]", output.getvalue())
+        self.assertIn("bad.py:2: [PY001|medium]", output.getvalue())
+        self.assertIn("confidence=medium", output.getvalue())
+        self.assertIn("Recommendation:", output.getvalue())
 
     def test_scan_command_returns_zero_for_clean_directory(self):
         with TemporaryDirectory() as directory:

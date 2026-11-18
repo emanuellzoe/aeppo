@@ -12,10 +12,12 @@ def main(argv=None):
     scan_parser = subparsers.add_parser("scan", help="scan a file or directory")
     scan_parser.add_argument("path", type=Path, help="file or directory to scan")
     scan_parser.add_argument("--format", choices=["text", "json"], default="text")
+    scan_parser.add_argument("--exclude", action="append", default=[], help="exclude a relative path glob; may be repeated")
+    scan_parser.add_argument("--max-file-size", type=int, default=1024 * 1024, metavar="BYTES", help="skip files larger than this (default: 1048576)")
     args = parser.parse_args(argv)
 
     try:
-        findings = scan_path(args.path)
+        findings = scan_path(args.path, excludes=args.exclude, max_file_size=args.max_file_size)
     except (OSError, ValueError) as error:
         print("aeppo: {}".format(error), file=sys.stderr)
         return 2
@@ -24,7 +26,8 @@ def main(argv=None):
         print(json.dumps([finding.__dict__ for finding in findings], indent=2))
     else:
         for finding in findings:
-            print("{}:{}: [{}] {}".format(finding.path, finding.line, finding.rule_id, finding.message))
+            print("{}:{}: [{}|{}] {} ({}, confidence={})".format(finding.path, finding.line, finding.rule_id, finding.severity, finding.message, finding.category, finding.confidence))
+            print("  Recommendation: {}".format(finding.recommendation))
         if not findings:
             print("No findings.")
     return 1 if findings else 0
