@@ -83,12 +83,12 @@ aeppo looks for `.aeppo.toml` starting from the scanned directory and moving up 
 
 ## pre-commit
 
-Scan staged files before every commit with [pre-commit](https://pre-commit.com/). Add this to `.pre-commit-config.yaml`, using the release commit SHA:
+Scan staged files before every commit with [pre-commit](https://pre-commit.com/). Add this to `.pre-commit-config.yaml` (pin `rev` to a release commit SHA):
 
 ```yaml
 repos:
   - repo: https://github.com/emanuellzoe/aeppo
-    rev: <release commit SHA>
+    rev: c55637139788d6f5f2ed920628f368f7bfdca6a6  # v0.5.0
     hooks:
       - id: aeppo
 ```
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@fd672ef037993a8c050e891af2da209d3bc725f7 # v0.4.0
+      - uses: emanuellzoe/aeppo@c55637139788d6f5f2ed920628f368f7bfdca6a6 # v0.5.0
         with:
           path: .
           format: json
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@fd672ef037993a8c050e891af2da209d3bc725f7 # v0.4.0
+      - uses: emanuellzoe/aeppo@c55637139788d6f5f2ed920628f368f7bfdca6a6 # v0.5.0
         with:
           format: sarif
           output-file: aeppo.sarif
