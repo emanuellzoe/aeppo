@@ -1,0 +1,2 @@
+# aeppo's own settings. The detection corpus holds intentionally risky (inert) samples.
+exclude = ["tests/corpus/**"]

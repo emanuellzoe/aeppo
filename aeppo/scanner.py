@@ -325,16 +325,21 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
     return _finalize(findings, lines)
 
 
-def filter_findings(findings: Iterable[Finding], min_severity: str = "low", baseline: Optional[Set[Tuple[str, str, str]]] = None) -> List[Finding]:
-    """Drop findings below ``min_severity`` and findings already recorded in ``baseline``."""
+def filter_findings(findings: Iterable[Finding], min_severity: str = "low", baseline: Optional[Set[Tuple[str, str, str]]] = None, disabled: Optional[Iterable[str]] = None) -> List[Finding]:
+    """Drop findings below ``min_severity``, from ``disabled`` rules, or already in ``baseline``."""
     if min_severity not in SEVERITY_ORDER:
         raise ValueError("min_severity must be one of: {}".format(", ".join(SEVERITY_ORDER)))
     threshold = SEVERITY_ORDER[min_severity]
     known = baseline or set()
+    off = {rule_id.upper() for rule_id in disabled or ()}
+    unknown = sorted(off - set(RULES))
+    if unknown:
+        raise ValueError("Unknown rule ID(s) to disable: {}".format(", ".join(unknown)))
     return [
         finding
         for finding in findings
         if SEVERITY_ORDER.get(finding.severity, 1) >= threshold
+        and finding.rule_id not in off
         and (finding.path, finding.rule_id, finding.fingerprint) not in known
     ]
 

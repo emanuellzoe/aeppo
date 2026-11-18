@@ -23,8 +23,8 @@ def format_json(findings):
     return json.dumps([finding.__dict__ for finding in findings], indent=2)
 
 
-def format_sarif(findings, uri_for=lambda path: path):
-    """Render findings as SARIF 2.1.0; ``uri_for`` maps a finding path to an artifact URI."""
+def format_sarif(findings, uri_for=lambda finding: finding.path):
+    """Render findings as SARIF 2.1.0; ``uri_for`` maps a finding to its artifact URI."""
     rule_ids = sorted(RULES)
     rule_index = {rule_id: index for index, rule_id in enumerate(rule_ids)}
     rules = []
@@ -55,7 +55,7 @@ def format_sarif(findings, uri_for=lambda path: path):
                 "locations": [
                     {
                         "physicalLocation": {
-                            "artifactLocation": {"uri": uri_for(finding.path)},
+                            "artifactLocation": {"uri": uri_for(finding)},
                             "region": {"startLine": finding.line},
                         }
                     }

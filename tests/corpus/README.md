@@ -9,4 +9,4 @@ Inert samples that aeppo must, or must not, report. `tests/test_corpus.py` scans
 
 When you add a rule or fix a false positive, add a sample here with its expectation and reason. The test fails if a file has no entry in `expected.json`.
 
-The repository's own self-scan excludes `tests/corpus/**`.
+The repository's `.aeppo.toml` excludes `tests/corpus/**`, so `aeppo scan .` at the root stays clean.
