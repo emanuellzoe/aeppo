@@ -61,8 +61,8 @@ jobs:
   aeppo:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@<full-commit-SHA>
-      - uses: emanuellzoe/aeppo@main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: emanuellzoe/aeppo@63c17857871e128d4c34a77e93c4c5fe585a587c
         with:
           path: .
           format: json
@@ -72,7 +72,7 @@ jobs:
           fail-on-findings: "true"
 ```
 
-Replace the checkout placeholder with its verified full commit SHA. For production use, pin aeppo to a reviewed full commit SHA instead of a moving branch reference. The action runs the scanner on the GitHub runner, does not execute scanned code, and requires only repository read permission. Findings fail the job by default; set `fail-on-findings: "false"` to report findings without failing the job.
+Both actions are pinned to full commit SHAs; verify the source and update the pins deliberately when upgrading. The action runs the scanner on the GitHub runner, does not execute scanned code, and requires only repository read permission. Findings fail the job by default; set `fail-on-findings: "false"` to report findings without failing the job.
 
 ## Current rules
 
