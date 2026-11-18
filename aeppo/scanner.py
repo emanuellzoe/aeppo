@@ -1,12 +1,19 @@
+import ast
 import fnmatch
+import hashlib
 import json
+import os
 import re
+from collections import namedtuple
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Iterable, List, Optional, Set, Tuple, Union
+
+
+SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2}
 
 
 class Finding:
-    def __init__(self, path, line, rule_id, message, severity="medium", confidence="medium", category="code-risk", recommendation="Review this finding in context."):
+    def __init__(self, path, line, rule_id, message, severity="medium", confidence="medium", category="code-risk", recommendation="Review this finding in context.", fingerprint=""):
         self.path = path
         self.line = line
         self.rule_id = rule_id
@@ -15,6 +22,7 @@ class Finding:
         self.confidence = confidence
         self.category = category
         self.recommendation = recommendation
+        self.fingerprint = fingerprint
 
     def __eq__(self, other):
         return isinstance(other, Finding) and self.__dict__ == other.__dict__
@@ -23,47 +31,159 @@ class Finding:
         return "Finding({!r}, {!r}, {!r}, {!r})".format(self.path, self.line, self.rule_id, self.message)
 
 
-_PYTHON_RULES = (
-    ("PY001", re.compile(r"\bos\.system\s*\("), "Use of os.system may execute a shell command with unsafe input.", "medium", "medium", "command-execution", "Prefer argument-list APIs and validate untrusted input."),
-    ("PY002", re.compile(r"\b(?:eval|exec)\s*\("), "Dynamic code execution can run attacker-controlled input.", "high", "medium", "dynamic-code", "Avoid dynamic evaluation or strictly constrain and validate the input."),
+Rule = namedtuple("Rule", "message severity confidence category recommendation")
+
+_REVOKE = "Revoke and rotate it if it is real; do not commit credentials."
+
+RULES = {
+    "PY001": Rule("Use of os.system or os.popen may execute a shell command with unsafe input.", "medium", "medium", "command-execution", "Prefer argument-list APIs such as subprocess.run([...]) and validate untrusted input."),
+    "PY002": Rule("Dynamic code execution can run attacker-controlled input.", "high", "medium", "dynamic-code", "Avoid dynamic evaluation or strictly constrain and validate the input."),
+    "PY003": Rule("subprocess call runs its command through a shell.", "high", "medium", "command-execution", "Pass an argument list without shell=True, or quote untrusted values with shlex.quote."),
+    "PY004": Rule("Unpickling can execute arbitrary code when the data is untrusted.", "high", "medium", "unsafe-deserialization", "Only unpickle trusted data; prefer JSON or another data-only format."),
+    "PY005": Rule("yaml.load without a safe loader can construct arbitrary Python objects.", "high", "medium", "unsafe-deserialization", "Use yaml.safe_load or pass Loader=yaml.SafeLoader."),
+    "JS001": Rule("Use of eval may execute dynamically constructed JavaScript.", "high", "medium", "dynamic-code", "Avoid eval and use explicit parsing or dispatch."),
+    "JS002": Rule("Shell command execution may be unsafe when arguments include untrusted input.", "high", "medium", "command-execution", "Prefer execFile/spawn with an argument array and validate untrusted input."),
+    "JS003": Rule("Function constructor or string-based timer evaluates code at runtime.", "high", "medium", "dynamic-code", "Pass a function instead of a code string and avoid new Function."),
+    "SEC001": Rule("Possible AWS access key ID found.", "high", "medium", "secret", _REVOKE),
+    "SEC002": Rule("Possible GitHub token found.", "high", "medium", "secret", _REVOKE),
+    "SEC003": Rule("Private key material header found.", "high", "high", "secret", "Protect the key and rotate it if it was exposed."),
+    "SEC004": Rule("Possible Slack token found.", "high", "medium", "secret", _REVOKE),
+    "SEC005": Rule("Possible Stripe live secret or restricted key found.", "high", "high", "secret", _REVOKE),
+    "SEC006": Rule("Possible OpenAI API key found.", "high", "medium", "secret", _REVOKE),
+    "SEC007": Rule("Possible Anthropic API key found.", "high", "high", "secret", _REVOKE),
+    "SEC008": Rule("Possible Google API key found.", "high", "medium", "secret", _REVOKE),
+    "DEP001": Rule("Dependency has no version constraint.", "low", "high", "dependency-management", "Pin dependencies to reviewed versions and use a lockfile where possible."),
+    "DEP002": Rule("Dependency uses a direct URL, VCS, or local path reference.", "medium", "high", "supply-chain", "Verify the source and pin it to an immutable commit or trusted artifact."),
+    "DEP003": Rule("Package defines an install lifecycle script that runs during installation.", "medium", "high", "dependency-install-script", "Inspect the script and its transitive commands before installing dependencies."),
+}
+
+_SECRET_PATTERNS = (
+    ("SEC001", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("SEC002", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b")),
+    ("SEC003", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
+    # Provider formats are kept close to the issued shape (numeric Slack IDs, versioned
+    # Anthropic prefixes, long OpenAI project keys) so short placeholders are not reported.
+    ("SEC004", re.compile(r"\bxox[abposr]-[0-9]{8,}-[0-9A-Za-z-]{10,}")),
+    ("SEC005", re.compile(r"\b[sr]k_live_[0-9A-Za-z]{24,}")),
+    ("SEC006", re.compile(r"\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}|\bsk-[A-Za-z0-9]{48}\b")),
+    ("SEC007", re.compile(r"\bsk-ant-(?:api|admin|oat|sid)[0-9]{2}-[A-Za-z0-9_-]{32,}")),
+    ("SEC008", re.compile(r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])")),
 )
-_JAVASCRIPT_RULES = (
-    ("JS001", re.compile(r"\beval\s*\("), "Use of eval may execute dynamically constructed JavaScript.", "high", "medium", "dynamic-code", "Avoid eval and use explicit parsing or dispatch."),
-    ("JS002", re.compile(r"\b(?:child_process\.)?(?:exec|execSync)\s*\("), "Shell command execution may be unsafe when arguments include untrusted input.", "high", "medium", "command-execution", "Prefer execFile/spawn with an argument array and validate untrusted input."),
+
+# Line-based fallback for Python files that do not parse (for example Python 2 sources).
+_PYTHON_FALLBACK_PATTERNS = (
+    ("PY001", re.compile(r"\bos\.(?:system|popen)\s*\(")),
+    ("PY002", re.compile(r"(?<![\w.])(?:eval|exec)\s*\(")),
 )
-_SECRET_RULES = (
-    ("SEC001", re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "Possible AWS access key ID found.", "high", "medium", "secret", "Revoke and rotate it if it is real; do not commit credentials."),
-    ("SEC002", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b"), "Possible GitHub token found.", "high", "medium", "secret", "Revoke and rotate it if it is real; do not commit credentials."),
-    ("SEC003", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"), "Private key material header found.", "high", "high", "secret", "Protect the key and rotate it if it was exposed."),
+
+# Calls such as ``pattern.exec(text)`` (RegExp) are method calls on unrelated objects, so a
+# bare name must not be preceded by ``.``, ``$`` or a word character.
+_JS_EVAL = re.compile(r"(?<![\w$.])eval\s*\(")
+_JS_EXEC_TEMPLATE = r"(?:\b(?:{})\.|(?<![\w$.]))(?:exec|execSync)\s*\("
+_JS_EXEC_DEFINITION = re.compile(r"(?:\basync\s+|\bfunction\b\s*\*?\s*)(?:exec|execSync)\s*\(|^\s*(?:exec|execSync)\s*\([^)]*\)\s*\{")
+_JS_CHILD_PROCESS_ALIAS = re.compile(
+    r"""\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"](?:node:)?child_process['"]\s*\)"""
+    r"""|\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s+from\s+['"](?:node:)?child_process['"]"""
 )
-_SOURCE_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx"}
+_JS_DYNAMIC = re.compile(r"\bnew\s+Function\s*\(|(?<![\w$])(?:(?:window|globalThis|self)\.)?(?:setTimeout|setInterval)\s*\(\s*['\"`]")
+_JS_COMMENT_PREFIXES = ("//", "/*", "*")
+_JS_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx"}
+
+_SUPPRESSION = re.compile(r"aeppo:\s*ignore(-next-line)?(?:\[([A-Za-z0-9_,\s]+)\])?")
+
+_SOURCE_EXTENSIONS = {".py"} | _JS_EXTENSIONS
 _CONFIG_EXTENSIONS = {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg"}
-_CONFIG_NAMES = {".env", ".env.local", ".env.development", ".env.production"}
 _MANIFEST_NAMES = {"requirements.txt", "package.json"}
 _IGNORED_DIRECTORIES = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules"}
 _DEFAULT_MAX_FILE_SIZE = 1024 * 1024
 
 
-def _finding(path, line, rule):
-    rule_id, _pattern, message, severity, confidence, category, recommendation = rule
-    return Finding(path, line, rule_id, message, severity, confidence, category, recommendation)
+def _finding(path, line, rule_id, message=None):
+    rule = RULES[rule_id]
+    return Finding(path, line, rule_id, message or rule.message, rule.severity, rule.confidence, rule.category, rule.recommendation)
+
+
+# Every secret pattern contains one of these literals; checking them first keeps the
+# per-line cost to a single regex search for the vast majority of lines.
+_SECRET_HINT = re.compile(r"AKIA|gh[pousr]_|-----BEGIN|xox|k_live_|sk-|AIza")
 
 
 def _secret_findings(path, lines):
-    findings = []
-    for line_number, line in enumerate(lines, start=1):
-        for rule in _SECRET_RULES:
-            if rule[1].search(line):
-                findings.append(_finding(path, line_number, rule))
-    return findings
+    return [
+        _finding(path, line_number, rule_id)
+        for line_number, line in enumerate(lines, start=1)
+        if _SECRET_HINT.search(line)
+        for rule_id, pattern in _SECRET_PATTERNS
+        if pattern.search(line)
+    ]
 
 
 def _supported(path):
-    return path.suffix.lower() in _SOURCE_EXTENSIONS | _CONFIG_EXTENSIONS or path.name in _MANIFEST_NAMES | _CONFIG_NAMES
+    name = path.name
+    return (
+        path.suffix.lower() in _SOURCE_EXTENSIONS | _CONFIG_EXTENSIONS
+        or name in _MANIFEST_NAMES
+        or name == ".env"
+        or name.startswith(".env.")
+    )
 
 
-def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_file_size: int = _DEFAULT_MAX_FILE_SIZE) -> List[Finding]:
-    """Scan supported source files and dependency manifests without executing them."""
+def _fingerprint(rule_id, line_text):
+    normalized = " ".join(line_text.split())
+    return hashlib.sha256("{}\0{}".format(rule_id, normalized).encode("utf-8")).hexdigest()[:16]
+
+
+def _suppressed_rules(line, next_line):
+    """Return the rule IDs a suppression comment on ``line`` covers (``None`` means all)."""
+    covered = set()
+    for match in _SUPPRESSION.finditer(line):
+        if bool(match.group(1)) != next_line:
+            continue
+        if not match.group(2):
+            return None
+        covered.update(part.strip().upper() for part in match.group(2).split(",") if part.strip())
+    return covered
+
+
+def _is_suppressed(lines, finding):
+    index = finding.line - 1
+    candidates = []
+    if 0 <= index < len(lines):
+        candidates.append(_suppressed_rules(lines[index], next_line=False))
+    if 1 <= index <= len(lines):
+        candidates.append(_suppressed_rules(lines[index - 1], next_line=True))
+    return any(rules is None or finding.rule_id in rules for rules in candidates)
+
+
+def _finalize(findings, lines):
+    kept = []
+    for finding in sorted(findings, key=lambda item: item.line):
+        if _is_suppressed(lines, finding):
+            continue
+        text = lines[finding.line - 1] if 0 < finding.line <= len(lines) else ""
+        finding.fingerprint = _fingerprint(finding.rule_id, text)
+        kept.append(finding)
+    return kept
+
+
+def _candidate_files(target):
+    """Yield supported files in sorted order, pruning hidden and vendor directories before descending."""
+    candidates = []
+    for directory, subdirectories, files in os.walk(target):
+        subdirectories[:] = [name for name in subdirectories if not name.startswith(".") and name not in _IGNORED_DIRECTORIES]
+        for name in files:
+            path = Path(directory, name)
+            if _supported(path) and path.is_file():
+                candidates.append(path)
+    return sorted(candidates)
+
+
+def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_file_size: int = _DEFAULT_MAX_FILE_SIZE, errors: Optional[List[str]] = None) -> List[Finding]:
+    """Scan supported source files and dependency manifests without executing them.
+
+    When ``errors`` is a list, files that cannot be read are skipped and described there;
+    otherwise the first read error is raised.
+    """
     target = Path(path)
     if max_file_size <= 0:
         raise ValueError("max_file_size must be greater than zero")
@@ -78,18 +198,22 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
 
     excludes = excludes or []
     findings = []
-    candidates = sorted(item for item in target.rglob("*") if item.is_file() and _supported(item))
-    for source in candidates:
-        relative = source.relative_to(target)
-        relative_name = relative.as_posix()
-        if any(part.startswith(".") or part in _IGNORED_DIRECTORIES for part in relative.parts[:-1]):
-            continue
+    for source in _candidate_files(target):
+        relative_name = source.relative_to(target).as_posix()
         if any(fnmatch.fnmatch(relative_name, pattern) for pattern in excludes):
             continue
-        if source.stat().st_size > max_file_size:
+        try:
+            if source.stat().st_size > max_file_size:
+                continue
+            file_findings = scan_file(source)
+        except OSError as error:
+            if errors is None:
+                raise
+            errors.append("{}: {}".format(relative_name, error.strerror or error))
             continue
-        for item in scan_file(source):
-            findings.append(Finding(relative_name, item.line, item.rule_id, item.message, item.severity, item.confidence, item.category, item.recommendation))
+        for item in file_findings:
+            item.path = relative_name
+            findings.append(item)
     return findings
 
 
@@ -98,24 +222,179 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
     file_path = Path(path)
     lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
     display_path = str(file_path)
+    suffix = file_path.suffix.lower()
     findings = _secret_findings(display_path, lines)
     if file_path.name == "requirements.txt":
         findings.extend(_scan_requirements(display_path, lines))
-        return findings
-    if file_path.name == "package.json":
+    elif file_path.name == "package.json":
         findings.extend(_scan_package_json(display_path, "\n".join(lines)))
-        return findings
+    elif suffix == ".py":
+        findings.extend(_scan_python(display_path, lines))
+    elif suffix in _JS_EXTENSIONS:
+        findings.extend(_scan_javascript(display_path, lines))
+    return _finalize(findings, lines)
 
-    if file_path.suffix.lower() in {".js", ".jsx", ".ts", ".tsx"}:
-        rules = _JAVASCRIPT_RULES
-    elif file_path.suffix.lower() == ".py":
-        rules = _PYTHON_RULES
-    else:
-        rules = ()
+
+def filter_findings(findings: Iterable[Finding], min_severity: str = "low", baseline: Optional[Set[Tuple[str, str, str]]] = None) -> List[Finding]:
+    """Drop findings below ``min_severity`` and findings already recorded in ``baseline``."""
+    if min_severity not in SEVERITY_ORDER:
+        raise ValueError("min_severity must be one of: {}".format(", ".join(SEVERITY_ORDER)))
+    threshold = SEVERITY_ORDER[min_severity]
+    known = baseline or set()
+    return [
+        finding
+        for finding in findings
+        if SEVERITY_ORDER.get(finding.severity, 1) >= threshold
+        and (finding.path, finding.rule_id, finding.fingerprint) not in known
+    ]
+
+
+def load_baseline(path: Union[str, Path]) -> Set[Tuple[str, str, str]]:
+    """Load a baseline written by ``aeppo scan --format json``."""
+    entries = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(entries, list) or not all(isinstance(entry, dict) and {"path", "rule_id", "fingerprint"} <= entry.keys() for entry in entries):
+        raise ValueError("Baseline must be a JSON array written by 'aeppo scan --format json'")
+    return {(entry["path"], entry["rule_id"], entry["fingerprint"]) for entry in entries}
+
+
+_SUBPROCESS_FUNCTIONS = {"run", "call", "check_call", "check_output", "Popen"}
+_SUBPROCESS_SHELL_FUNCTIONS = {"getoutput", "getstatusoutput"}
+_PICKLE_MODULES = {"pickle", "_pickle", "cPickle", "dill"}
+_UNSAFE_YAML_LOADERS = {"Loader", "FullLoader", "UnsafeLoader", "CLoader", "CFullLoader", "CUnsafeLoader"}
+_TRACKED_MODULES = {"os", "subprocess", "yaml"} | _PICKLE_MODULES
+
+
+# A Python rule can only fire if the file contains one of these call or import shapes, so
+# files without them skip the (comparatively expensive) AST parse and walk entirely.
+# ``name as`` covers ``from os import system as run`` where the call site no longer names it.
+# Deserialization names (``loads`` and friends) are common (``json.loads``), so they only count
+# when a tracked module is mentioned. Avoid leading lookbehinds here: they defeat re's fast scan.
+_PYTHON_HINT = re.compile(r"\b(?:eval|exec|system|popen|getoutput|getstatusoutput)(?:\s*\(|\s+as\s)|\bshell\s*=\s*True")
+_PYTHON_DESERIALIZE_HINT = re.compile(r"\b(?:loads?|load_all|unsafe_load(?:_all)?|Unpickler)(?:\s*\(|\s+as\s)")
+_PYTHON_DESERIALIZE_MODULES = ("pickle", "dill", "yaml")
+
+
+def _python_may_match(source):
+    if _PYTHON_HINT.search(source):
+        return True
+    return any(module in source for module in _PYTHON_DESERIALIZE_MODULES) and bool(_PYTHON_DESERIALIZE_HINT.search(source))
+
+
+def _call_target(func, modules, names):
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id in modules:
+        return modules[func.value.id], func.attr
+    if isinstance(func, ast.Name) and func.id in names:
+        return names[func.id]
+    return None
+
+
+def _is_true(node):
+    return isinstance(node, ast.Constant) and node.value is True
+
+
+def _uses_unsafe_yaml_loader(call):
+    if any(keyword.arg is None for keyword in call.keywords):
+        return False  # ``**kwargs`` may supply a safe loader; avoid guessing.
+    loader = next((keyword.value for keyword in call.keywords if keyword.arg == "Loader"), None)
+    if loader is None and len(call.args) > 1:
+        loader = call.args[1]
+    if loader is None:
+        return True
+    if isinstance(loader, ast.Attribute):
+        return loader.attr in _UNSAFE_YAML_LOADERS
+    if isinstance(loader, ast.Name):
+        return loader.id in _UNSAFE_YAML_LOADERS
+    return False
+
+
+def _python_rule(call, modules, names):
+    func = call.func
+    if isinstance(func, ast.Name) and func.id in {"eval", "exec"}:
+        return "PY002"
+    target = _call_target(func, modules, names)
+    if target is None:
+        return None
+    module, attribute = target
+    if module == "os" and attribute in {"system", "popen"}:
+        return "PY001"
+    if module == "subprocess":
+        if attribute in _SUBPROCESS_SHELL_FUNCTIONS:
+            return "PY003"
+        if attribute in _SUBPROCESS_FUNCTIONS and any(keyword.arg == "shell" and _is_true(keyword.value) for keyword in call.keywords):
+            return "PY003"
+    if module in _PICKLE_MODULES and attribute in {"load", "loads", "Unpickler"}:
+        return "PY004"
+    if module == "yaml":
+        if attribute in {"unsafe_load", "unsafe_load_all"}:
+            return "PY005"
+        if attribute in {"load", "load_all"} and _uses_unsafe_yaml_loader(call):
+            return "PY005"
+    return None
+
+
+def _scan_python(path, lines):
+    """Match real calls via the AST so comments, strings and unrelated methods are ignored."""
+    source = "\n".join(lines)
+    if not _python_may_match(source):
+        return []
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, RecursionError):
+        return [
+            _finding(path, line_number, rule_id)
+            for line_number, line in enumerate(lines, start=1)
+            for rule_id, pattern in _PYTHON_FALLBACK_PATTERNS
+            if pattern.search(line)
+        ]
+    # One walk collects both imports and calls; calls are resolved once all aliases are known.
+    modules = {name: name for name in _TRACKED_MODULES}
+    names = {}
+    calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            calls.append(node)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _TRACKED_MODULES and alias.asname:
+                    modules[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module in _TRACKED_MODULES:
+            for alias in node.names:
+                names[alias.asname or alias.name] = (node.module, alias.name)
+    hits = set()
+    for call in calls:
+        rule_id = _python_rule(call, modules, names)
+        if rule_id:
+            hits.add((call.lineno, rule_id))
+    return [_finding(path, line_number, rule_id) for line_number, rule_id in sorted(hits)]
+
+
+def _scan_javascript(path, lines):
+    source = "\n".join(lines)
+    has_eval, has_exec = "eval" in source, "exec" in source
+    has_dynamic = "Function" in source or "setTimeout" in source or "setInterval" in source
+    if not (has_eval or has_exec or has_dynamic):
+        return []
+    exec_pattern = None
+    if has_exec:
+        aliases = {"child_process"}
+        if "child_process" in source:
+            for required, imported in _JS_CHILD_PROCESS_ALIAS.findall(source):
+                aliases.add(required or imported)
+        exec_pattern = re.compile(_JS_EXEC_TEMPLATE.format("|".join(re.escape(alias) for alias in sorted(aliases))))
+    findings = []
     for line_number, line in enumerate(lines, start=1):
-        for rule in rules:
-            if rule[1].search(line):
-                findings.append(_finding(display_path, line_number, rule))
+        # Substring checks are far cheaper than regex searches and skip almost every line.
+        line_eval = has_eval and "eval" in line
+        line_exec = has_exec and "exec" in line
+        line_dynamic = has_dynamic and ("Function" in line or "set" in line)
+        if not (line_eval or line_exec or line_dynamic) or line.lstrip().startswith(_JS_COMMENT_PREFIXES):
+            continue
+        if line_eval and _JS_EVAL.search(line):
+            findings.append(_finding(path, line_number, "JS001"))
+        if line_exec and exec_pattern.search(line) and not _JS_EXEC_DEFINITION.search(line):
+            findings.append(_finding(path, line_number, "JS002"))
+        if line_dynamic and _JS_DYNAMIC.search(line):
+            findings.append(_finding(path, line_number, "JS003"))
     return findings
 
 
@@ -126,9 +405,9 @@ def _scan_requirements(path, lines):
         if not line:
             continue
         if line.startswith(("http://", "https://", "git+")) or " @ " in line:
-            findings.append(Finding(path, line_number, "DEP002", "Dependency uses a direct URL or VCS reference.", "medium", "high", "supply-chain", "Verify the source and pin it to an immutable commit or trusted artifact."))
+            findings.append(_finding(path, line_number, "DEP002", "Dependency uses a direct URL or VCS reference."))
         elif re.match(r"^[A-Za-z0-9_.-]+(?:\[[^]]+\])?$", line):
-            findings.append(Finding(path, line_number, "DEP001", "Dependency has no version constraint.", "low", "high", "dependency-management", "Pin dependencies to reviewed versions and use a lockfile where possible."))
+            findings.append(_finding(path, line_number, "DEP001"))
     return findings
 
 
@@ -139,18 +418,21 @@ def _scan_package_json(path, raw):
         return []
     if not isinstance(package, dict):
         return []
+    raw_lines = raw.splitlines()
     findings = []
     scripts = package.get("scripts", {})
     if isinstance(scripts, dict):
         for name in ("preinstall", "install", "postinstall"):
             if name in scripts:
-                line = next((index for index, text in enumerate(raw.splitlines(), start=1) if '"' + name + '"' in text), 1)
-                findings.append(Finding(path, line, "DEP003", "Package defines an {} lifecycle script that runs during installation.".format(name), "medium", "high", "dependency-install-script", "Inspect the script and its transitive commands before installing dependencies."))
+                line = next((index for index, text in enumerate(raw_lines, start=1) if '"' + name + '"' in text), 1)
+                findings.append(_finding(path, line, "DEP003", "Package defines an {} lifecycle script that runs during installation.".format(name)))
     for section in ("dependencies", "devDependencies", "optionalDependencies"):
         dependencies = package.get(section, {})
         if not isinstance(dependencies, dict):
             continue
         for name, version in dependencies.items():
             if isinstance(version, str) and version.startswith(("git+", "http://", "https://", "file:")):
-                findings.append(Finding(path, 1, "DEP002", "Dependency {} uses a direct URL, VCS, or local path reference.".format(name), "medium", "high", "supply-chain", "Verify the source and pin it to an immutable commit or trusted artifact."))
+                key, value = json.dumps(name), json.dumps(version)
+                line = next((index for index, text in enumerate(raw_lines, start=1) if key in text and value in text), 1)
+                findings.append(_finding(path, line, "DEP002", "Dependency {} uses a direct URL, VCS, or local path reference.".format(name)))
     return findings

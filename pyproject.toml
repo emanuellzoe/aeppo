@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeppo"
+dynamic = ["version"]
+description = "Local static scanner for risky source patterns and exposed secrets"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/emanuellzoe/aeppo"
+
+[project.scripts]
+aeppo = "aeppo.cli:main"
+
+[tool.setuptools]
+packages = ["aeppo"]
+
+[tool.setuptools.dynamic]
+version = { attr = "aeppo.__version__" }

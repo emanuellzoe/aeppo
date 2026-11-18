@@ -10,9 +10,21 @@ inputs:
     required: false
     default: .
   format:
-    description: Finding output format (text or json).
+    description: Finding output format (text, json, or sarif).
     required: false
     default: text
+  min-severity:
+    description: Report only findings at or above this severity (low, medium, or high).
+    required: false
+    default: low
+  baseline:
+    description: Path to a JSON baseline written by `aeppo scan --format json`; findings recorded there are ignored.
+    required: false
+    default: ""
+  output-file:
+    description: Write the report to this file instead of the log (for example a SARIF file to upload).
+    required: false
+    default: ""
   exclude:
     description: Newline-separated relative path globs to exclude.
     required: false
@@ -47,4 +59,7 @@ runs:
         AEPPO_EXCLUDES: ${{ inputs.exclude }}
         AEPPO_MAX_FILE_SIZE: ${{ inputs.max-file-size }}
         AEPPO_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        AEPPO_MIN_SEVERITY: ${{ inputs.min-severity }}
+        AEPPO_BASELINE: ${{ inputs.baseline }}
+        AEPPO_OUTPUT_FILE: ${{ inputs.output-file }}
       run: python "$AEPPO_ACTION_PATH/scripts/action_entry.py"
