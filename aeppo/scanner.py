@@ -19,6 +19,7 @@ class Finding:
 
 _RULES = (
     ("PY001", re.compile(r"\bos\.system\s*\("), "Use of os.system may execute a shell command with unsafe input."),
+    ("JS001", re.compile(r"\beval\s*\("), "Use of eval may execute dynamically constructed JavaScript."),
 )
 
 _SECRET_RULES = (
@@ -29,7 +30,7 @@ _SECRET_RULES = (
 
 
 def scan_path(path: Union[str, Path]) -> List[Finding]:
-    """Scan a Python file or recursively scan Python files in a directory.
+    """Scan a supported source file or recursively scan source files in a directory.
 
     Paths in findings are relative to the scanned directory when scanning a directory.
     """
@@ -41,7 +42,8 @@ def scan_path(path: Union[str, Path]) -> List[Finding]:
 
     ignored_directories = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules"}
     findings = []
-    for source in sorted(target.rglob("*.py")):
+    supported_extensions = {".py", ".js", ".jsx", ".ts", ".tsx"}
+    for source in sorted(item for item in target.rglob("*") if item.is_file() and item.suffix.lower() in supported_extensions):
         relative = source.relative_to(target)
         if any(part.startswith(".") or part in ignored_directories for part in relative.parts[:-1]):
             continue
@@ -51,12 +53,16 @@ def scan_path(path: Union[str, Path]) -> List[Finding]:
 
 
 def scan_file(path: Union[str, Path]) -> List[Finding]:
-    """Statically scan a Python source file for known risky patterns."""
+    """Statically scan Python/JavaScript source for known risky patterns."""
     file_path = Path(path)
     findings = []
 
+    source_rules = _RULES
+    if file_path.suffix.lower() in {".js", ".jsx", ".ts", ".tsx"}:
+        source_rules = (("JS001", re.compile(r"\beval\s*\("), "Use of eval may execute dynamically constructed JavaScript."),)
     for line_number, line in enumerate(file_path.read_text(encoding="utf-8").splitlines(), start=1):
-        for rule_id, pattern, message in _RULES + _SECRET_RULES:
+        rules = source_rules + _SECRET_RULES
+        for rule_id, pattern, message in rules:
             if pattern.search(line):
                 findings.append(Finding(str(file_path), line_number, rule_id, message))
 

@@ -6,6 +6,20 @@ from aeppo.scanner import scan_file, scan_path
 
 
 class ScanFileTests(unittest.TestCase):
+    def test_scans_javascript_and_typescript_for_eval(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            eval_call = "ev" + "al(userInput)"
+            (root / "src" / "app.js").write_text(eval_call + "\n")
+            (root / "src" / "app.ts").write_text("const result = " + eval_call + ";\n")
+
+            findings = scan_path(root)
+
+        self.assertEqual(len(findings), 2)
+        self.assertEqual([finding.path for finding in findings], ["src/app.js", "src/app.ts"])
+        self.assertEqual([finding.rule_id for finding in findings], ["JS001", "JS001"])
+
     def test_scans_python_files_recursively_and_skips_hidden_and_venv_dirs(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

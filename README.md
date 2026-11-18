@@ -1,61 +1,62 @@
 # aeppo
 
-`aeppo` adalah scanner statis lokal untuk menandai beberapa pola berisiko dan kredensial yang mungkin tertanam di source Python. Scanner tidak menjalankan kode yang dipindai.
+`aeppo` is a local static scanner that flags selected risky code patterns and potentially exposed credentials in Python, JavaScript, and TypeScript source files. It does not execute scanned code.
 
-## Status proyek
+## Project status
 
-Prototipe awal. Saat ini hanya memindai file `.py` dan memiliki sejumlah kecil rules berbasis pola. Hasil bukan bukti bahwa kode berbahaya atau kredensial valid; false positive dan false negative mungkin terjadi.
+Early prototype. It scans `.py`, `.js`, `.jsx`, `.ts`, and `.tsx` files and currently uses a small set of pattern-based rules. Findings do not prove that code is malicious or that a credential is valid; false positives and false negatives are possible.
 
-## Persyaratan
+## Requirements
 
-- Python 3.9 atau lebih baru
-- Tidak ada dependency eksternal
+- Python 3.9 or later
+- No external dependencies
 
-## Jalankan
+## Usage
 
-Dari root repository:
+From the repository root:
 
 ```bash
 python3 -m aeppo.cli scan PATH
 ```
 
-Contoh:
+Examples:
 
 ```bash
 python3 -m aeppo.cli scan ./some-repository
 python3 -m aeppo.cli scan ./some-repository --format json
 ```
 
-Mode teks menampilkan path, nomor baris, ID rule, dan alasan. Mode JSON menghasilkan array temuan dengan `path`, `line`, `rule_id`, dan `message`.
+Text output includes the path, line number, rule ID, and explanation. JSON output is an array of findings with `path`, `line`, `rule_id`, and `message` fields.
 
-Exit status:
+Exit codes:
 
-- `0`: scan sukses tanpa temuan
-- `1`: scan sukses dengan temuan
-- `2`: target tidak dapat dipindai / argumen tidak valid
+- `0`: scan completed with no findings
+- `1`: scan completed and findings were reported
+- `2`: target could not be scanned or arguments were invalid
 
-## Rules saat ini
+## Current rules
 
-| ID | Deteksi | Catatan |
+| ID | Detection | Notes |
 |---|---|---|
-| `PY001` | Pemanggilan pola `os.system(` | Heuristik statis; konteks pemakaian perlu ditinjau |
-| `SEC001` | Pola AWS access key ID berawalan `AKIA` | Tidak memvalidasi key atau status aktif |
-| `SEC002` | Pola token GitHub berawalan `ghp_`, `gho_`, `ghu_`, `ghs_`, atau `ghr_` | Tidak memvalidasi token |
-| `SEC003` | Header PEM private key umum | Mendeteksi header, bukan memastikan seluruh key valid |
+| `PY001` | `os.system(` call pattern in Python | Static heuristic; review the usage context |
+| `JS001` | `eval(` call pattern in JavaScript/TypeScript | Static heuristic; review the usage context |
+| `SEC001` | AWS access key ID pattern beginning with `AKIA` | Does not validate the key or determine whether it is active |
+| `SEC002` | GitHub token patterns beginning with `ghp_`, `gho_`, `ghu_`, `ghs_`, or `ghr_` | Does not validate the token |
+| `SEC003` | Common PEM private-key headers | Detects a header, not whether the complete key is valid |
 
-Direktori tersembunyi, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, dan `node_modules` dilewati saat traversal folder.
+During directory traversal, aeppo skips hidden directories, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, and `node_modules`.
 
-## Batasan keamanan
+## Security limitations
 
-- Pemindaian bersifat statis dan terbatas pada Python; kode target tidak dieksekusi.
-- Rules regex sederhana dapat melewatkan variasi obfuscation atau menghasilkan false positive.
-- Jangan menempelkan temuan berisi secret ke issue publik. Jika secret sungguhan terdeteksi, anggap terekspos dan cabut/rotasi melalui penyedia terkait.
-- Jangan menganggap sandbox sebagai jaminan mutlak bila kelak melakukan analisis dinamis.
+- Scanning is static and limited to the Python, JavaScript, and TypeScript extensions listed above; target code is not executed.
+- Simple regular-expression rules can miss obfuscated variants or produce false positives.
+- Do not post findings containing secrets in public issues. If a real secret is detected, treat it as exposed and revoke or rotate it with the relevant provider.
+- Do not treat a sandbox as an absolute guarantee if dynamic analysis is added in the future.
 
-## Tes
+## Tests
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Kontribusi rules baru sebaiknya menyertakan tes positif dan negatif dengan nilai dummy, bukan kredensial sungguhan.
+Contributions adding rules should include positive and negative tests with dummy values, never real credentials.
