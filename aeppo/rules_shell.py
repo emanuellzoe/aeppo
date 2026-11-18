@@ -89,13 +89,63 @@ def is_shell_script(path):
     return head.startswith(b"#!") and has_shell_shebang(head.split(b"\n", 1)[0].decode("utf-8", "replace"))
 
 
+_PRINT_COMMAND = re.compile(r"^(?:echo|printf)\b")
+
+
+def _mask_quoted_text(line):
+    """Blank out quoted text, keeping ``$(...)`` inside double quotes because the shell runs it.
+
+    ``echo "curl ... | sh"`` only prints install instructions; ``echo payload | sh`` (pipe outside
+    the quotes) and ``echo "$(curl ...)"`` still run something and stay visible.
+    """
+    out = []
+    quote = None
+    depth = 0
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if quote is None:
+            if char in "'\"":
+                quote = char
+                out.append(" ")
+            else:
+                out.append(char)
+        elif quote == "'":
+            if char == "'":
+                quote = None
+            out.append(" ")
+        else:  # inside double quotes
+            if depth == 0 and char == "\\" and index + 1 < len(line):
+                out.append("  ")
+                index += 2
+                continue
+            if line.startswith("$(", index):
+                depth += 1
+                out.append("$(")
+                index += 2
+                continue
+            if depth:
+                depth += char == "("
+                depth -= char == ")"
+                out.append(char)
+            elif char == '"':
+                quote = None
+                out.append(" ")
+            else:
+                out.append(" ")
+        index += 1
+    return "".join(out)
+
+
 def scan(lines):
     hits = []
     for line_number, line in enumerate(lines, start=1):
         stripped = line.lstrip()
         if not stripped or stripped.startswith("#") or not any(hint in line for hint in _HINTS):
             continue
+        # Printed instructions: only what runs outside the quoted text counts.
+        text = _mask_quoted_text(line) if _PRINT_COMMAND.match(stripped) else line
         for rule_id, pattern in _RULES:
-            if pattern.search(line):
+            if pattern.search(text):
                 hits.append((line_number, rule_id))
     return hits
