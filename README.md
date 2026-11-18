@@ -40,7 +40,7 @@ aeppo scan PATH --baseline aeppo-baseline.json
 aeppo scan PATH --exclude '**/generated/**' --max-file-size 524288
 ```
 
-aeppo scans `.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
+aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
 
 | Option | Effect |
 |---|---|
@@ -158,7 +158,7 @@ SARIF locations are written relative to the working directory, which is the repo
 | `PY006` | Interactive shell: `subprocess` with `["/bin/sh", "-i"]`, or `pty.spawn` of a shell | Common reverse-shell and backdoor shape |
 | `JS001` | `eval(` call, or `eval` passed as a callback such as `.then(eval)` | Method calls named `eval` are not reported |
 | `JS002` | `exec(`/`execSync(` called bare, on `child_process`, on a `child_process` alias, or on `require('child_process')`; `spawn`/`execFile` of a shell with `-c` and a non-literal command | `RegExp.prototype.exec` and method definitions named `exec` are not reported |
-| `JS003` | `Function(...)` with or without `new`, or `setTimeout`/`setInterval` with a string argument | Type annotations such as `cb: Function` are not reported |
+| `JS003` | `Function(...)` with or without `new`, or `setTimeout`/`setInterval` with a string argument | Type annotations such as `cb: Function` and methods named `Function` (Babel visitors) are not reported |
 | `SRC001` | Bidirectional Unicode control characters in Python, JavaScript, or TypeScript source ([Trojan Source](https://trojansource.codes/)) | Data files such as translations are not checked; suppress intended uses inside string literals |
 | `SEC001` | AWS access key ID pattern beginning with `AKIA` | Does not validate the key or determine whether it is active |
 | `SEC002` | GitHub token patterns beginning with `ghp_`, `gho_`, `ghu_`, `ghs_`, or `ghr_` | Does not validate the token |
@@ -183,7 +183,9 @@ During directory traversal, aeppo skips hidden directories, `.git`, `.hg`, `.svn
 - Python rules follow import aliases, `__import__`, `importlib.import_module`, and `getattr` with literal names within a single file only. Calls reached through variables, wrappers, or names built at runtime are not detected.
 - Names assembled at runtime, such as `globalThis['ev' + 'al']`, are out of reach for pattern-based rules. aeppo is a review aid, not a reliable detector of deliberately obfuscated backdoors.
 - JavaScript, TypeScript, and secret rules are regular expressions and can miss obfuscated variants or produce false positives.
-- Secret rules report well-formed dummy values (such as documented example keys) as findings; suppress or baseline them after review.
+- Values that look like placeholders are still reported, but at `low` severity and confidence. This covers values containing `EXAMPLE` (such as the AWS documentation key) and values whose tail repeats one or two characters (`ghp_xxxx...`). Use `--min-severity medium` to hide them. Other well-formed dummy values are reported normally; suppress or baseline them after review.
+- `SEC003` matches the private-key header line only, so headers quoted in documentation or in detection rules are reported too.
+- Go, Rust, Java, and other languages are not scanned for code patterns; only their supported configuration and Markdown files are checked.
 - Do not post findings containing secrets in public issues. If a real secret is detected, treat it as exposed and revoke or rotate it with the relevant provider.
 - Do not treat a sandbox as an absolute guarantee if dynamic analysis is added in the future.
 - Dependency rules flag review signals only. aeppo does not query vulnerability databases or determine whether a package version is known vulnerable.
