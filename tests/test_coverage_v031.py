@@ -19,7 +19,7 @@ def scan_source(name, text):
 
 class ModuleExtensionTests(unittest.TestCase):
     def test_mjs_cjs_mts_cts_files_are_scanned(self):
-        call = "execS" + "ync(`git clone ${url}`)\n"
+        call = "import { execS" + "ync } from 'node:child_process'\nexecS" + "ync(`git clone ${url}`)\n"
         with TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ("a.mjs", "b.cjs", "c.mts", "d.cts"):
@@ -28,6 +28,35 @@ class ModuleExtensionTests(unittest.TestCase):
             findings = scan_path(root)
 
         self.assertEqual([(finding.path, finding.rule_id) for finding in findings], [("a.mjs", "JS002"), ("b.cjs", "JS002"), ("c.mts", "JS002"), ("d.cts", "JS002")])
+
+
+class BareExecTests(unittest.TestCase):
+    """v0.3.2: a local helper named exec is not a shell call."""
+
+    def test_local_exec_helper_without_child_process_is_not_reported(self):
+        found = scan_source(
+            "vault-e2e.mjs",
+            "const exec = (action, approval = null) => agent.callRaw(vault, 'execute', { action, approval })\n"
+            "let r = await ex" + "ec(pay(amount))\n"
+            "r = ex" + "ecSync(other)\n",
+        )
+        self.assertEqual(found, [])
+
+    def test_bare_exec_is_reported_when_child_process_is_imported(self):
+        found = scan_source(
+            "run.mjs",
+            "import { ex" + "ec } from 'node:child_process'\n"
+            "ex" + "ec(command)\n",
+        )
+        self.assertEqual([(finding.line, finding.rule_id) for finding in found], [(2, "JS002")])
+
+    def test_prefixed_calls_are_reported_without_an_import_line(self):
+        found = scan_source(
+            "run.js",
+            "child_process.ex" + "ec(command)\n"
+            "require('child_process').ex" + "ecSync(command)\n",
+        )
+        self.assertEqual([(finding.line, finding.rule_id) for finding in found], [(1, "JS002"), (2, "JS002")])
 
 
 class FunctionMethodTests(unittest.TestCase):

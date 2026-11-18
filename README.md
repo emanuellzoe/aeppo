@@ -157,7 +157,7 @@ SARIF locations are written relative to the working directory, which is the repo
 | `PY005` | `yaml.load`/`load_all` without a safe loader, or `yaml.unsafe_load` | `SafeLoader`/`CSafeLoader` and `yaml.safe_load` are not reported |
 | `PY006` | Interactive shell: `subprocess` with `["/bin/sh", "-i"]`, or `pty.spawn` of a shell | Common reverse-shell and backdoor shape |
 | `JS001` | `eval(` call, or `eval` passed as a callback such as `.then(eval)` | Method calls named `eval` are not reported |
-| `JS002` | `exec(`/`execSync(` called bare, on `child_process`, on a `child_process` alias, or on `require('child_process')`; `spawn`/`execFile` of a shell with `-c` and a non-literal command | `RegExp.prototype.exec` and method definitions named `exec` are not reported |
+| `JS002` | `exec(`/`execSync(` called bare, on `child_process`, on a `child_process` alias, or on `require('child_process')`; `spawn`/`execFile` of a shell with `-c` and a non-literal command | A bare `exec(` is reported only in files that mention `child_process`, so local helpers named `exec` are not reported. `RegExp.prototype.exec` and method definitions named `exec` are not reported either |
 | `JS003` | `Function(...)` with or without `new`, or `setTimeout`/`setInterval` with a string argument | Type annotations such as `cb: Function` and methods named `Function` (Babel visitors) are not reported |
 | `SRC001` | Bidirectional Unicode control characters in Python, JavaScript, or TypeScript source ([Trojan Source](https://trojansource.codes/)) | Data files such as translations are not checked; suppress intended uses inside string literals |
 | `SEC001` | AWS access key ID pattern beginning with `AKIA` | Does not validate the key or determine whether it is active |

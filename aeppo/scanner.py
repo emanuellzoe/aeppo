@@ -84,7 +84,11 @@ _PYTHON_FALLBACK_PATTERNS = (
 # eval itself as a callback, which runs whatever text the promise resolves to.
 _JS_EVAL = re.compile(r"(?<![\w$.])eval\s*\(|[(,]\s*eval\s*[),]")
 # ``require('child_process').exec(...)`` calls the module without binding it to a name first.
-_JS_EXEC_TEMPLATE = r"(?:(?:\b(?:{})|require\(\s*['\"](?:node:)?child_process['\"]\s*\))\s*\.|(?<![\w$.]))(?:exec|execSync)\s*\("
+_JS_EXEC_TEMPLATE = r"(?:\b(?:{})|require\(\s*['\"](?:node:)?child_process['\"]\s*\))\s*\.(?:exec|execSync)\s*\("
+# A bare ``exec(`` is only a shell call when it comes from child_process (``const { exec } =
+# require('child_process')``). Files that never mention child_process often define their own
+# ``exec`` helper (for example a contract or database call), so bare calls there are not reported.
+_JS_BARE_EXEC = r"(?<![\w$.])(?:exec|execSync)\s*\("
 # ``spawn('sh', ['-c', cmd])`` with a non-literal command: a variable or a template with ``${}``.
 _JS_SHELL = re.compile(
     r"\b(?:spawn|spawnSync|execFile|execFileSync)\s*\(\s*['\"`](?:/(?:usr/)?bin/)?(?:ba|z|da|k)?sh['\"`]\s*,\s*\[\s*['\"]-[A-Za-z]*c[A-Za-z]*['\"]\s*,"
@@ -519,10 +523,14 @@ def _scan_javascript(path, lines):
     exec_pattern = None
     if has_exec:
         aliases = {"child_process"}
-        if "child_process" in source:
+        uses_child_process = "child_process" in source
+        if uses_child_process:
             for required, imported in _JS_CHILD_PROCESS_ALIAS.findall(source):
                 aliases.add(required or imported)
-        exec_pattern = re.compile(_JS_EXEC_TEMPLATE.format("|".join(re.escape(alias) for alias in sorted(aliases))))
+        pattern = _JS_EXEC_TEMPLATE.format("|".join(re.escape(alias) for alias in sorted(aliases)))
+        if uses_child_process:
+            pattern += "|" + _JS_BARE_EXEC
+        exec_pattern = re.compile(pattern)
     findings = []
     for line_number, line in enumerate(lines, start=1):
         # Substring checks are far cheaper than regex searches and skip almost every line.
