@@ -18,3 +18,6 @@ jobs:
         with:
           path: .
           format: json
+          # The detection corpus contains intentionally risky (inert) samples.
+          exclude: |
+            tests/corpus/**

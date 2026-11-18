@@ -1,0 +1,1 @@
+setTimeout('tick()', 10)

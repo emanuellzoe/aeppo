@@ -110,7 +110,9 @@ _REMOTE_PIPE = re.compile(
 _JS_COMMENT_PREFIXES = ("//", "/*", "*")
 # A method named ``Function`` (for example a Babel visitor: ``Function(path) {``) is a definition,
 # not a call to the Function constructor.
-_JS_FUNCTION_METHOD = re.compile(r"^\s*(?:async\s+)?Function\s*\([^)]*\)\s*\{")
+# Matches anywhere on the line so inline visitors (``{ Function(path) { ... } }``) are covered; a
+# call to the constructor is never directly followed by a ``{`` body (or a TS return type and body).
+_JS_FUNCTION_METHOD = re.compile(r"(?<![\w$.])(?:async\s+)?Function\s*\([^)]*\)\s*(?::\s*[\w$<>\[\], |.]+)?\s*\{")
 # ES module and CommonJS variants (.mjs/.cjs) and their TypeScript counterparts (.mts/.cts).
 _JS_EXTENSIONS = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 # Documentation is checked for leaked secrets only; code rules would misfire on prose and snippets.
@@ -119,7 +121,9 @@ _DOCUMENT_EXTENSIONS = {".md", ".markdown", ".mdx"}
 _SUPPRESSION = re.compile(r"aeppo:\s*ignore(-next-line)?(?:\[([A-Za-z0-9_,\s]+)\])?")
 
 _SOURCE_EXTENSIONS = {".py"} | _JS_EXTENSIONS
-_CONFIG_EXTENSIONS = {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg"}
+# ``.env`` as an extension covers names such as ``production.env``; ``.env`` and ``.env.*`` are
+# matched by name in ``_supported``.
+_CONFIG_EXTENSIONS = {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"}
 _MANIFEST_NAMES = {"requirements.txt", "package.json"}
 _IGNORED_DIRECTORIES = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules"}
 _DEFAULT_MAX_FILE_SIZE = 1024 * 1024
@@ -545,7 +549,7 @@ def _scan_javascript(path, lines):
         exec_call = line_exec and exec_pattern.search(line) and not _JS_EXEC_DEFINITION.search(line)
         if exec_call or (line_shell and _JS_SHELL.search(line)):
             findings.append(_finding(path, line_number, "JS002"))
-        if line_dynamic and _JS_DYNAMIC.search(line) and not _JS_FUNCTION_METHOD.match(line):
+        if line_dynamic and _JS_DYNAMIC.search(line) and not _JS_FUNCTION_METHOD.search(line):
             findings.append(_finding(path, line_number, "JS003"))
     return findings
 

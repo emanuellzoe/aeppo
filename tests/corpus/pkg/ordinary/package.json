@@ -1,0 +1,7 @@
+{
+  "name": "demo",
+  "scripts": {
+    "postinstall": "node scripts/build.js",
+    "prepare": "husky install"
+  }
+}

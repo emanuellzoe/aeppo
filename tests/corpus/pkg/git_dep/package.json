@@ -1,0 +1,7 @@
+{
+  "name": "demo",
+  "dependencies": {
+    "left": "^1.0.0",
+    "demo": "git+https://example.invalid/demo.git"
+  }
+}
