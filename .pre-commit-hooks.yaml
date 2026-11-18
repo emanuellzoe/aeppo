@@ -1,0 +1,7 @@
+- id: aeppo
+  name: aeppo security scan
+  description: Statically scan staged files for risky code patterns and exposed secrets.
+  entry: aeppo scan --skip-unsupported
+  language: python
+  types: [text]
+  require_serial: false

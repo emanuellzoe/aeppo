@@ -38,6 +38,8 @@ aeppo scan PATH --format sarif --output aeppo.sarif
 aeppo scan PATH --min-severity medium
 aeppo scan PATH --baseline aeppo-baseline.json
 aeppo scan PATH --exclude '**/generated/**' --max-file-size 524288
+aeppo scan PATH --disable GHA003 --disable SH005
+aeppo scan app.py scripts/deploy.sh   # several files or directories at once
 ```
 
 aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, and extensionless files with a shell shebang), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
@@ -48,6 +50,9 @@ aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`,
 | `--output FILE` | Write the report to `FILE` instead of standard output |
 | `--min-severity low\|medium\|high` | Report only findings at or above this severity (default `low`) |
 | `--baseline FILE` | Ignore findings already recorded in a JSON report (see below) |
+| `--disable RULE` | Turn off a rule ID; may be repeated. Unknown IDs are an error |
+| `--config FILE` / `--no-config` | Use a specific settings file, or ignore `.aeppo.toml` (see below) |
+| `--skip-unsupported` | Skip file arguments aeppo cannot scan instead of failing (used by the pre-commit hook) |
 
 Text output includes the path, line number, rule ID, severity, confidence, category, explanation, and recommendation. JSON output is an array of findings with `path`, `line`, `rule_id`, `message`, `severity`, `confidence`, `category`, `recommendation`, and `fingerprint` fields. SARIF output follows SARIF 2.1.0 and can be uploaded to GitHub code scanning.
 
@@ -55,7 +60,40 @@ Exit codes:
 
 - `0`: scan completed with no findings (after severity, suppression, and baseline filtering)
 - `1`: scan completed and findings were reported
-- `2`: target could not be scanned, arguments were invalid, or the baseline/output file could not be used
+- `2`: target could not be scanned, arguments were invalid, or the config/baseline/output file could not be used
+
+## Configuration file
+
+Put project settings in `.aeppo.toml` so every run (CLI, pre-commit, GitHub Action) uses the same ones:
+
+```toml
+exclude = ["tests/fixtures/**", "vendor/**"]   # relative path globs
+disable = ["SH005"]                            # rule IDs to turn off
+min-severity = "medium"                        # low | medium | high
+max-file-size = 1048576                        # bytes
+baseline = "aeppo-baseline.json"               # relative to this file
+```
+
+aeppo looks for `.aeppo.toml` starting from the scanned directory and moving up to the repository root (the first directory containing `.git`). When several paths or individual files are given, as pre-commit does, the search starts from the current directory. Use `--config FILE` to choose a file or `--no-config` to ignore it.
+
+- Command-line options win: `--min-severity`, `--max-file-size`, and `--baseline` replace the file's values, while `--exclude` and `--disable` add to them.
+- Exclude globs are matched against paths relative to the scanned directory, or against the path as given for file arguments. Keep the file at the repository root and scan from there.
+- Unknown keys, unknown rule IDs, and invalid values are errors (exit code 2), so a typo cannot silently turn a setting off.
+- Python 3.11+ reads the file with `tomllib`. Python 3.9 and 3.10 use a built-in parser for top-level keys with strings, integers, booleans, and arrays, so aeppo still has no runtime dependencies.
+
+## pre-commit
+
+Scan staged files before every commit with [pre-commit](https://pre-commit.com/). Add this to `.pre-commit-config.yaml`, using the release commit SHA:
+
+```yaml
+repos:
+  - repo: https://github.com/emanuellzoe/aeppo
+    rev: <release commit SHA>
+    hooks:
+      - id: aeppo
+```
+
+The hook passes the staged files to `aeppo scan --skip-unsupported`, so files aeppo does not understand are skipped. It reads the repository's `.aeppo.toml`, and a finding blocks the commit until it is fixed, suppressed with `aeppo: ignore[RULE]`, or recorded in a baseline.
 
 ## Suppressing reviewed findings
 

@@ -18,6 +18,4 @@ jobs:
         with:
           path: .
           format: json
-          # The detection corpus contains intentionally risky (inert) samples.
-          exclude: |
-            tests/corpus/**
+          # The corpus exclusion comes from this repository's .aeppo.toml.
