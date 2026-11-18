@@ -79,3 +79,7 @@ python3 -m unittest discover -s tests -v
 ```
 
 Contributions adding rules should include positive and negative tests with dummy values, never real credentials.
+
+## License
+
+aeppo is distributed under the MIT License. See `LICENSE` for the full text.

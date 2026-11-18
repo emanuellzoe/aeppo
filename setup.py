@@ -6,6 +6,7 @@ setup(
     version="0.1.0",
     description="Local static scanner for risky source patterns and exposed secrets",
     url="https://github.com/emanuellzoe/aeppo",
+    license="MIT",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     packages=find_packages(),
@@ -15,5 +16,6 @@ setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.9",
         "Topic :: Security",
+        "License :: OSI Approved :: MIT License",
     ],
 )
