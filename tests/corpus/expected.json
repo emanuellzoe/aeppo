@@ -65,6 +65,9 @@
   "shell/pipe_to_interpreters.sh": {"expect": ["2:SH001:high", "3:SH001:high", "4:SH001:high"], "why": "python reading stdin (bare or -) and bash -s run the download"},
   "negative/curl_into_data_tools.sh": {"expect": [], "why": "python -m json.tool, jq, node with a script and sh -c only process the data (hermes-agent false positive)"},
 
+  "shell/echo_still_runs.sh": {"expect": ["2:SH003:high", "3:SH001:high", "4:SH004:high"], "why": "echo output piped into sh, or written to authorized_keys, still runs or persists"},
+  "negative/printed_install_instructions.sh": {"expect": [], "why": "install instructions printed by echo/printf, not run (rtk check-installation.sh false positive)"},
+
   "known_miss/indirect_eval_concat.js": {"expect": [], "known_miss": true, "why": "name assembled at runtime; out of reach for pattern rules"},
 
   "generated/secrets/realistic_aws.env": {"expect": ["1:SEC001:high"], "why": "well-formed AWS key ID"},
