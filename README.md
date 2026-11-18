@@ -150,14 +150,16 @@ SARIF locations are written relative to the working directory, which is the repo
 
 | ID | Detection | Notes |
 |---|---|---|
-| `PY001` | `os.system(...)` or `os.popen(...)` call, including `import os as ...` and `from os import ...` | Matched on the syntax tree; comments and strings are ignored |
+| `PY001` | `os.system(...)` or `os.popen(...)` call, including aliases, `__import__("os")`, `importlib.import_module("os")`, and `getattr(os, "system")` | Matched on the syntax tree; comments and strings are ignored |
 | `PY002` | Call to the built-in `eval(...)` or `exec(...)` | Method calls such as `model.eval()` are not reported |
-| `PY003` | `subprocess` call with `shell=True`, or `subprocess.getoutput`/`getstatusoutput` | Argument-list calls without a shell are not reported |
+| `PY003` | `subprocess` call with `shell=True`, `getoutput`/`getstatusoutput`, or a shell argument list such as `["sh", "-c", command]` whose command is not a literal | Running a script file or a literal `-c` command is not reported |
 | `PY004` | `pickle`/`dill` `load`, `loads`, or `Unpickler` | Unsafe only when the data is untrusted |
 | `PY005` | `yaml.load`/`load_all` without a safe loader, or `yaml.unsafe_load` | `SafeLoader`/`CSafeLoader` and `yaml.safe_load` are not reported |
-| `JS001` | `eval(` call pattern in JavaScript/TypeScript | Method calls named `eval` are not reported |
-| `JS002` | `exec(`/`execSync(` called bare, on `child_process`, or on a `child_process` alias | `RegExp.prototype.exec` and method definitions named `exec` are not reported |
-| `JS003` | `new Function(...)`, or `setTimeout`/`setInterval` with a string argument | Static heuristic; review the usage context |
+| `PY006` | Interactive shell: `subprocess` with `["/bin/sh", "-i"]`, or `pty.spawn` of a shell | Common reverse-shell and backdoor shape |
+| `JS001` | `eval(` call, or `eval` passed as a callback such as `.then(eval)` | Method calls named `eval` are not reported |
+| `JS002` | `exec(`/`execSync(` called bare, on `child_process`, on a `child_process` alias, or on `require('child_process')`; `spawn`/`execFile` of a shell with `-c` and a non-literal command | `RegExp.prototype.exec` and method definitions named `exec` are not reported |
+| `JS003` | `Function(...)` with or without `new`, or `setTimeout`/`setInterval` with a string argument | Type annotations such as `cb: Function` are not reported |
+| `SRC001` | Bidirectional Unicode control characters in Python, JavaScript, or TypeScript source ([Trojan Source](https://trojansource.codes/)) | Data files such as translations are not checked; suppress intended uses inside string literals |
 | `SEC001` | AWS access key ID pattern beginning with `AKIA` | Does not validate the key or determine whether it is active |
 | `SEC002` | GitHub token patterns beginning with `ghp_`, `gho_`, `ghu_`, `ghs_`, or `ghr_` | Does not validate the token |
 | `SEC003` | Common PEM private-key headers | Detects a header, not whether the complete key is valid |
@@ -169,6 +171,7 @@ SARIF locations are written relative to the working directory, which is the repo
 | `DEP001` | Unconstrained requirement in `requirements.txt` | Dependency hygiene signal; not a vulnerability verdict |
 | `DEP002` | Direct URL, VCS, or local dependency reference | Verify the source and pin to an immutable revision |
 | `DEP003` | npm install lifecycle script in `package.json` | Review commands before installing dependencies |
+| `DEP004` | Install or `prepare` script that downloads content and pipes it into a shell or interpreter (`curl ... \| sh`, `bash <(curl ...)`) | Reported in addition to `DEP003` |
 
 Python files that cannot be parsed (for example Python 2 sources) fall back to line-based patterns for `PY001` and `PY002`.
 
@@ -177,7 +180,8 @@ During directory traversal, aeppo skips hidden directories, `.git`, `.hg`, `.svn
 ## Security limitations
 
 - Scanning is static and limited to the source and configuration formats listed above; target code and dependency scripts are not executed.
-- Python rules follow import aliases within a single file only; calls reached through variables, wrappers, or `getattr` are not detected.
+- Python rules follow import aliases, `__import__`, `importlib.import_module`, and `getattr` with literal names within a single file only. Calls reached through variables, wrappers, or names built at runtime are not detected.
+- Names assembled at runtime, such as `globalThis['ev' + 'al']`, are out of reach for pattern-based rules. aeppo is a review aid, not a reliable detector of deliberately obfuscated backdoors.
 - JavaScript, TypeScript, and secret rules are regular expressions and can miss obfuscated variants or produce false positives.
 - Secret rules report well-formed dummy values (such as documented example keys) as findings; suppress or baseline them after review.
 - Do not post findings containing secrets in public issues. If a real secret is detected, treat it as exposed and revoke or rotate it with the relevant provider.
