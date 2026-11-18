@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@63c17857871e128d4c34a77e93c4c5fe585a587c
+      - uses: emanuellzoe/aeppo@d802604c2bc5897b8e234342226ef4971eee0d4d # v0.2.0
         with:
           path: .
           format: json
@@ -107,7 +107,7 @@ jobs:
           fail-on-findings: "true"
 ```
 
-Both actions are pinned to full commit SHAs; verify the source and update the pins deliberately when upgrading. The pinned aeppo SHA above predates the `min-severity`, `baseline`, `output-file`, and SARIF options; pin a later commit to use them. The action runs the scanner on the GitHub runner, does not execute scanned code, and requires only repository read permission. Findings fail the job by default; set `fail-on-findings: "false"` to report findings without failing the job.
+Both actions are pinned to full commit SHAs; verify the source and update the pins deliberately when upgrading. Release commits are listed on the [releases page](https://github.com/emanuellzoe/aeppo/releases). The action runs the scanner on the GitHub runner, does not execute scanned code, and requires only repository read permission. Findings fail the job by default; set `fail-on-findings: "false"` to report findings without failing the job.
 
 | Input | Default | Description |
 |---|---|---|
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@<commit-sha>
+      - uses: emanuellzoe/aeppo@d802604c2bc5897b8e234342226ef4971eee0d4d # v0.2.0
         with:
           format: sarif
           output-file: aeppo.sarif
