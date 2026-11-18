@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@9588f74492a8889f132cc5be155cbd48b745a202 # v0.3.1
+      - uses: emanuellzoe/aeppo@d41323bd6f36265d42c6b08c551e1483410fc963 # v0.3.2
         with:
           path: .
           format: json
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@9588f74492a8889f132cc5be155cbd48b745a202 # v0.3.1
+      - uses: emanuellzoe/aeppo@d41323bd6f36265d42c6b08c551e1483410fc963 # v0.3.2
         with:
           format: sarif
           output-file: aeppo.sarif
