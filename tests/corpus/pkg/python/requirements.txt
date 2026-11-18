@@ -1,0 +1,3 @@
+demo-package
+pinned-package==1.2.3
+demo-url @ https://example.invalid/demo.whl
