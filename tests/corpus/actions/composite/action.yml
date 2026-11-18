@@ -1,0 +1,7 @@
+name: Composite example
+runs:
+  using: composite
+  steps:
+    - uses: ./helper
+    - shell: bash
+      run: echo "Branch ${{ github.head_ref }}"

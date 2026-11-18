@@ -1,0 +1,10 @@
+name: Comment bot
+on:
+  issue_comment:
+    types: [created]
+permissions: write-all
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "comment received"

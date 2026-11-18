@@ -8,6 +8,8 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Iterable, List, Optional, Set, Tuple, Union
 
+from aeppo import rules_actions, rules_shell
+
 
 SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -56,6 +58,15 @@ RULES = {
     "DEP001": Rule("Dependency has no version constraint.", "low", "high", "dependency-management", "Pin dependencies to reviewed versions and use a lockfile where possible."),
     "DEP002": Rule("Dependency uses a direct URL, VCS, or local path reference.", "medium", "high", "supply-chain", "Verify the source and pin it to an immutable commit or trusted artifact."),
     "DEP003": Rule("Package defines an install lifecycle script that runs during installation.", "medium", "high", "dependency-install-script", "Inspect the script and its transitive commands before installing dependencies."),
+    "SH001": Rule("Shell script downloads remote content and runs it.", "high", "high", "supply-chain", "Download to a file, verify its checksum or signature, and review it before running."),
+    "SH002": Rule("Shell script opens a reverse shell.", "high", "medium", "backdoor", "Remove it unless the script is an intended remote-access tool."),
+    "SH003": Rule("Shell script decodes an encoded payload and runs it.", "high", "medium", "obfuscation", "Decode the payload and review it; ship readable scripts instead of encoded ones."),
+    "SH004": Rule("Shell script installs persistence (SSH authorized key or cron entry).", "high", "medium", "backdoor", "Confirm the key or job is expected; installers should not add access or schedules silently."),
+    "SH005": Rule("Shell script modifies a shell startup file.", "low", "low", "persistence", "Review what is appended; installers commonly add PATH entries, but this can also hide persistence."),
+    "GHA001": Rule("pull_request_target workflow checks out or fetches code from the pull request.", "high", "high", "ci-security", "Do not run untrusted PR code with pull_request_target; use pull_request, or split the privileged step into a workflow_run job."),
+    "GHA002": Rule("Untrusted GitHub context is expanded directly into a script.", "high", "high", "ci-security", "Pass the value through an environment variable (env: TITLE: ${{ ... }}) and quote \"$TITLE\" in the script."),
+    "GHA003": Rule("Action is referenced by a mutable tag or branch instead of a full commit SHA.", "medium", "high", "supply-chain", "Pin the action to a full 40-character commit SHA and note the version in a comment."),
+    "GHA004": Rule("Workflow grants write-all permissions.", "medium", "high", "ci-security", "Grant only the permissions each job needs, starting from contents: read."),
     "DEP004": Rule("Install script downloads remote content and pipes it into an interpreter.", "high", "high", "supply-chain", "Do not install until the downloaded script is reviewed; vendor it or pin it to a verified checksum."),
     "SRC001": Rule("Bidirectional Unicode control character can make code render differently from how it runs (Trojan Source).", "high", "medium", "obfuscation", "Remove the control character, or confirm it only appears inside an intended string literal."),
 }
@@ -178,10 +189,11 @@ def _bidi_findings(path, lines):
 def _supported(path):
     name = path.name
     return (
-        path.suffix.lower() in _SOURCE_EXTENSIONS | _CONFIG_EXTENSIONS | _DOCUMENT_EXTENSIONS
+        path.suffix.lower() in _SOURCE_EXTENSIONS | _CONFIG_EXTENSIONS | _DOCUMENT_EXTENSIONS | rules_shell.SHELL_EXTENSIONS
         or name in _MANIFEST_NAMES
         or name == ".env"
         or name.startswith(".env.")
+        or (not path.suffix and rules_shell.is_shell_script(path))
     )
 
 
@@ -224,10 +236,19 @@ def _finalize(findings, lines):
 
 
 def _candidate_files(target):
-    """Yield supported files in sorted order, pruning hidden and vendor directories before descending."""
+    """Return supported files in sorted order, pruning hidden and vendor directories before descending.
+
+    The one hidden directory entered is ``.github``, and inside it only ``workflows/*.yml|yaml``.
+    """
     candidates = []
     for directory, subdirectories, files in os.walk(target):
-        subdirectories[:] = [name for name in subdirectories if not name.startswith(".") and name not in _IGNORED_DIRECTORIES]
+        relative = Path(directory).relative_to(target).parts
+        if ".github" in relative:
+            subdirectories[:] = ["workflows"] if relative[-1] == ".github" and "workflows" in subdirectories else []
+            if relative[-1] == "workflows":
+                candidates.extend(Path(directory, name) for name in files if Path(name).suffix.lower() in {".yml", ".yaml"} and Path(directory, name).is_file())
+            continue
+        subdirectories[:] = [name for name in subdirectories if name == ".github" or (not name.startswith(".") and name not in _IGNORED_DIRECTORIES)]
         for name in files:
             path = Path(directory, name)
             if _supported(path) and path.is_file():
@@ -293,6 +314,14 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
         findings.extend(_scan_python(display_path, lines))
     elif suffix in _JS_EXTENSIONS:
         findings.extend(_scan_javascript(display_path, lines))
+    elif rules_actions.is_actions_file(file_path):
+        for line_number, rule_id, severity in rules_actions.scan(lines):
+            finding = _finding(display_path, line_number, rule_id)
+            if severity:
+                finding.severity = severity
+            findings.append(finding)
+    elif suffix in rules_shell.SHELL_EXTENSIONS or (not suffix and lines and rules_shell.has_shell_shebang(lines[0])):
+        findings.extend(_finding(display_path, line_number, rule_id) for line_number, rule_id in rules_shell.scan(lines))
     return _finalize(findings, lines)
 
 

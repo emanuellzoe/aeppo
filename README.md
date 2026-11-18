@@ -40,7 +40,7 @@ aeppo scan PATH --baseline aeppo-baseline.json
 aeppo scan PATH --exclude '**/generated/**' --max-file-size 524288
 ```
 
-aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
+aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, and extensionless files with a shell shebang), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
 
 | Option | Effect |
 |---|---|
@@ -175,7 +175,26 @@ SARIF locations are written relative to the working directory, which is the repo
 
 Python files that cannot be parsed (for example Python 2 sources) fall back to line-based patterns for `PY001` and `PY002`.
 
-During directory traversal, aeppo skips hidden directories, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, and `node_modules`.
+### Shell scripts
+
+| ID | Detection | Notes |
+|---|---|---|
+| `SH001` | Download piped into an interpreter (`curl ... \| sh`, `\| bash -s`, `\| python3`), `source <(curl ...)`, `eval "$(curl ...)"` | `\| python3 -m json.tool`, `\| jq`, `\| node script.js` and `sh -c` only process data and are not reported |
+| `SH002` | Reverse shells: `bash -i >& /dev/tcp/...`, `nc -e /bin/sh`, `socat ... exec:sh`, `mkfifo` + `nc` | A plain `/dev/tcp` health check (wait-for-it) is not reported |
+| `SH003` | Encoded payload decoded and run (`base64 -d \| sh`, `eval "$(... base64 -d)"`, `xxd -r \| sh`) | Decoding to a file is not reported |
+| `SH004` | Persistence: appending to `authorized_keys`, installing a cron entry (`\| crontab -`, writes to `/etc/cron*`) | `crontab -l` is not reported |
+| `SH005` | Appending to a shell startup file (`~/.bashrc`, `~/.zshrc`, `~/.profile`) | Low severity: installers do this legitimately |
+
+### GitHub Actions
+
+| ID | Detection | Notes |
+|---|---|---|
+| `GHA001` | `pull_request_target` workflow that checks out or fetches the pull request's code (`ref: ${{ github.event.pull_request.head.sha }}`, `gh pr checkout`) | The "pwn request" pattern; checking out `github.sha` is not reported |
+| `GHA002` | Untrusted context (issue/PR title or body, comment body, `github.head_ref`, commit messages) expanded inside `run:` or `script:` | Passing the value through `env:` is the fix and is not reported |
+| `GHA003` | Action referenced by a tag or branch instead of a full commit SHA | `low` for `actions/*` and `github/*`, `medium` for third-party actions; local `./` actions are not reported |
+| `GHA004` | `permissions: write-all` | `high` when the workflow also runs on `pull_request_target`, `workflow_run` or `issue_comment` |
+
+During directory traversal, aeppo enters `.github/workflows` but skips other hidden directories, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, and `node_modules`.
 
 ## Security limitations
 

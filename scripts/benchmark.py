@@ -55,7 +55,35 @@ export const visitor = { Function(path: unknown) { return path } }
 export const longLine = "%s"
 '''
 
-MARKDOWN_BODY = "# Notes\n\nSet `sk-test` style keys in your environment, never in docs.\n\n" + "Lorem ipsum dolor sit amet. " * 40 + "\n"
+SHELL_BODY = '''#!/usr/bin/env bash
+set -euo pipefail
+# Benign: downloads go to files, /dev/tcp is a health check, nothing is piped into a shell.
+curl -fsSL -o "$TMP/tool.tar.gz" "https://example.invalid/tool.tar.gz"
+(echo -n > /dev/tcp/$HOST/$PORT) >/dev/null 2>&1 || echo "waiting for $HOST"
+curl -fsS "http://127.0.0.1:$PORT/stats" | python3 -m json.tool
+crontab -l || true
+base64 -d payload.b64 > payload.bin
+'''
+
+WORKFLOW_BODY = '''name: CI
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "PR ${{ github.event.pull_request.number }}: $TITLE"
+          make test
+'''
+
+MARKDOWN_BODY ="# Notes\n\nSet `sk-test` style keys in your environment, never in docs.\n\n" + "Lorem ipsum dolor sit amet. " * 40 + "\n"
 
 
 def build(root, files):
@@ -67,6 +95,12 @@ def build(root, files):
         (folder / "parse_{}.ts".format(index)).write_text((TYPESCRIPT_BODY % long_line) * 4, encoding="utf-8")
         if index % 4 == 0:
             (folder / "README_{}.md".format(index)).write_text(MARKDOWN_BODY, encoding="utf-8")
+            (folder / "setup_{}.sh".format(index)).write_text(SHELL_BODY * 4, encoding="utf-8")
+            (folder / "run_{}".format(index)).write_text(SHELL_BODY, encoding="utf-8")
+    workflows = root / ".github" / "workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
+    for index in range(max(1, files // 30)):
+        (workflows / "ci_{}.yml".format(index)).write_text(WORKFLOW_BODY * 3, encoding="utf-8")
 
 
 def main():
