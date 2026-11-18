@@ -104,7 +104,13 @@ _REMOTE_PIPE = re.compile(
     r"|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b"
 )
 _JS_COMMENT_PREFIXES = ("//", "/*", "*")
-_JS_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx"}
+# A method named ``Function`` (for example a Babel visitor: ``Function(path) {``) is a definition,
+# not a call to the Function constructor.
+_JS_FUNCTION_METHOD = re.compile(r"^\s*(?:async\s+)?Function\s*\([^)]*\)\s*\{")
+# ES module and CommonJS variants (.mjs/.cjs) and their TypeScript counterparts (.mts/.cts).
+_JS_EXTENSIONS = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
+# Documentation is checked for leaked secrets only; code rules would misfire on prose and snippets.
+_DOCUMENT_EXTENSIONS = {".md", ".markdown", ".mdx"}
 
 _SUPPRESSION = re.compile(r"aeppo:\s*ignore(-next-line)?(?:\[([A-Za-z0-9_,\s]+)\])?")
 
@@ -125,14 +131,33 @@ def _finding(path, line, rule_id, message=None):
 _SECRET_HINT = re.compile(r"AKIA|gh[pousr]_|-----BEGIN|xox|k_live_|sk-|AIza")
 
 
+# Provider documentation uses placeholder credentials that contain the word EXAMPLE (AWS documents
+# ``AKIA...EXAMPLE``). They are still reported, so nothing is hidden, but at low severity and
+# confidence so ``--min-severity medium`` filters them out.
+_EXAMPLE_MARKER = "EXAMPLE"
+
+
+def _looks_like_placeholder(value):
+    # ``EXAMPLE`` keys, or a tail made of one or two repeated characters (``ghp_xxxx...``, ``AAAA...``).
+    return _EXAMPLE_MARKER in value or len(set(value[-16:])) <= 2
+
+
 def _secret_findings(path, lines):
-    return [
-        _finding(path, line_number, rule_id)
-        for line_number, line in enumerate(lines, start=1)
-        if _SECRET_HINT.search(line)
-        for rule_id, pattern in _SECRET_PATTERNS
-        if pattern.search(line)
-    ]
+    findings = []
+    for line_number, line in enumerate(lines, start=1):
+        if not _SECRET_HINT.search(line):
+            continue
+        for rule_id, pattern in _SECRET_PATTERNS:
+            match = pattern.search(line)
+            if not match:
+                continue
+            finding = _finding(path, line_number, rule_id)
+            if _looks_like_placeholder(match.group(0)):
+                finding.message = "Placeholder or documented example credential found ({}).".format(RULES[rule_id].message.rstrip("."))
+                finding.severity = "low"
+                finding.confidence = "low"
+            findings.append(finding)
+    return findings
 
 
 def _bidi_findings(path, lines):
@@ -145,7 +170,7 @@ def _bidi_findings(path, lines):
 def _supported(path):
     name = path.name
     return (
-        path.suffix.lower() in _SOURCE_EXTENSIONS | _CONFIG_EXTENSIONS
+        path.suffix.lower() in _SOURCE_EXTENSIONS | _CONFIG_EXTENSIONS | _DOCUMENT_EXTENSIONS
         or name in _MANIFEST_NAMES
         or name == ".env"
         or name.startswith(".env.")
@@ -248,6 +273,8 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
     display_path = str(file_path)
     suffix = file_path.suffix.lower()
     findings = _secret_findings(display_path, lines)
+    if suffix in _DOCUMENT_EXTENSIONS:
+        return _finalize(findings, lines)
     if suffix in _SOURCE_EXTENSIONS:
         findings.extend(_bidi_findings(display_path, lines))
     if file_path.name == "requirements.txt":
@@ -510,7 +537,7 @@ def _scan_javascript(path, lines):
         exec_call = line_exec and exec_pattern.search(line) and not _JS_EXEC_DEFINITION.search(line)
         if exec_call or (line_shell and _JS_SHELL.search(line)):
             findings.append(_finding(path, line_number, "JS002"))
-        if line_dynamic and _JS_DYNAMIC.search(line):
+        if line_dynamic and _JS_DYNAMIC.search(line) and not _JS_FUNCTION_METHOD.match(line):
             findings.append(_finding(path, line_number, "JS003"))
     return findings
 
