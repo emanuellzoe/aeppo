@@ -15,7 +15,15 @@ def main():
         os.environ.get("AEPPO_FORMAT", "text"),
         "--max-file-size",
         os.environ.get("AEPPO_MAX_FILE_SIZE", "1048576"),
+        "--min-severity",
+        os.environ.get("AEPPO_MIN_SEVERITY", "") or "low",
     ]
+    baseline = os.environ.get("AEPPO_BASELINE", "").strip()
+    if baseline:
+        arguments.extend(["--baseline", baseline])
+    output_file = os.environ.get("AEPPO_OUTPUT_FILE", "").strip()
+    if output_file:
+        arguments.extend(["--output", output_file])
     for pattern in os.environ.get("AEPPO_EXCLUDES", "").splitlines():
         pattern = pattern.strip()
         if pattern:

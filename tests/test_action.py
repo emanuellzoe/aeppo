@@ -62,6 +62,27 @@ class ActionEntryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), [])
 
+    def test_min_severity_input_filters_low_findings(self):
+        with TemporaryDirectory() as directory:
+            (Path(directory) / "requirements.txt").write_text("demo-package\n")
+
+            result = self.run_action(directory, AEPPO_MIN_SEVERITY="medium")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [])
+
+    def test_writes_sarif_to_output_file(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "unsafe.py"
+            source.write_text("os." + "system(user_input)\n")
+            report = Path(directory) / "aeppo.sarif"
+
+            result = self.run_action(directory, AEPPO_FORMAT="sarif", AEPPO_OUTPUT_FILE=str(report), AEPPO_EXCLUDES="*.sarif")
+            sarif = json.loads(report.read_text())
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(sarif["runs"][0]["results"][0]["ruleId"], "PY001")
+
 
 if __name__ == "__main__":
     unittest.main()

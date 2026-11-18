@@ -106,6 +106,71 @@ class ScanFileTests(unittest.TestCase):
 
         self.assertEqual({finding.rule_id for finding in findings}, {"PY002", "JS002"})
 
+    def test_python_ignores_comments_strings_and_method_calls(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "sample.py"
+            source.write_text(
+                "# never call os." + "system() here\n"
+                "PATTERN = 'find -ex" + "ec(rm)'\n"
+                "model.ev" + "al()\n"
+                "ssh.ex" + "ec(command)\n"
+                "doc = \"os." + "system(x)\"\n"
+            )
+
+            findings = scan_file(source)
+
+        self.assertEqual(findings, [])
+
+    def test_python_reports_multiline_call_at_its_first_line(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "sample.py"
+            source.write_text("import os\nos." + "system(\n    command,\n)\n")
+
+            findings = scan_file(source)
+
+        self.assertEqual([(finding.line, finding.rule_id) for finding in findings], [(2, "PY001")])
+
+    def test_python_falls_back_to_patterns_when_file_does_not_parse(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "legacy.py"
+            source.write_text("print 'legacy'\nex" + "ec(code)\n")
+
+            findings = scan_file(source)
+
+        self.assertEqual([(finding.line, finding.rule_id) for finding in findings], [(2, "PY002")])
+
+    def test_javascript_ignores_regexp_exec_method_calls_and_comments(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "parse.ts"
+            source.write_text(
+                "const match = /a(b)/.ex" + "ec(text)\n"
+                "const other = PATTERN.ex" + "ec(line)\n"
+                "// avoid ev" + "al(input)\n"
+                " * child_process.ex" + "ec(cmd) in docs\n"
+            )
+
+            findings = scan_file(source)
+
+        self.assertEqual(findings, [])
+
+    def test_javascript_still_flags_destructured_exec(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "run.js"
+            source.write_text("const { ex" + "ecSync } = require('child_process')\nex" + "ecSync(command)\n")
+
+            findings = scan_file(source)
+
+        self.assertEqual([(finding.line, finding.rule_id) for finding in findings], [(2, "JS002")])
+
+    def test_package_json_direct_dependency_reports_its_line(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "package.json"
+            source.write_text('{\n  "dependencies": {\n    "left": "^1.0.0",\n    "demo": "git+https://example.invalid/demo.git"\n  }\n}\n')
+
+            findings = scan_file(source)
+
+        self.assertEqual([(finding.line, finding.rule_id) for finding in findings], [(4, "DEP002")])
+
     def test_does_not_flag_unrelated_source(self):
         with TemporaryDirectory() as directory:
             source = Path(directory) / "sample.py"
