@@ -10,6 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.9"
+keywords = ["security", "static-analysis", "sast", "secrets", "supply-chain", "backdoor", "github-actions"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -19,10 +20,15 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
 ]
 
 [project.urls]
 Homepage = "https://github.com/emanuellzoe/aeppo"
+Changelog = "https://github.com/emanuellzoe/aeppo/blob/main/CHANGELOG.md"
+Issues = "https://github.com/emanuellzoe/aeppo/issues"
 
 [project.scripts]
 aeppo = "aeppo.cli:main"

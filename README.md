@@ -289,6 +289,12 @@ python3 -m unittest discover -s tests -v
 
 Contributions adding rules should include positive and negative tests with dummy values, never real credentials. Split dummy secrets and risky call strings in test sources (for example `"AKIA" + "..."`) so aeppo's own scan of this repository stays clean.
 
+## Contributing, security and changes
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): development setup, module layout, and how to add a rule with corpus samples.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release.
+
 ## License
 
 aeppo is distributed under the MIT License. See `LICENSE` for the full text.
