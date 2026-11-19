@@ -91,6 +91,15 @@ AUTOEXEC_FILES = {
     "build.gradle.kts": 'plugins { kotlin("jvm") version "2.0.0" }\ndependencies { implementation("org.slf4j:slf4j-api:2.0.13") }\n',
 }
 
+# Benign files that pass the code-rule hints, so the lexer and argument parsing run.
+CODE_FILES = {
+    "tool.go": 'package main\n\nimport "os/exec"\n\n// exec.Command("sh", "-c", x) in a comment\nfunc rev() ([]byte, error) {\n\treturn exec.Command("git", "rev-parse", "HEAD").Output()\n}\n' * 20,
+    "tool.rs": 'use std::process::Command;\nfn rev() { let _ = Command::new("git").args(["rev-parse", "HEAD"]).output(); let s: &\'static str = "x"; }\n' * 20,
+    "Tool.java": 'class Tool {\n  void run(String f) throws Exception {\n    new ProcessBuilder("git", "log", f).start(); // Runtime.getRuntime().exec(x)\n  }\n}\n' * 20,
+    "tool.php": '<html><p>Don\'t</p></html>\n<?php\n$pdo->exec($sql);\n$rows = json_decode($body, true);\n?>\n' * 20,
+    "tool.rb": 'def rev(ref)\n  system("git", "log", ref) # system("rm #{ref}")\n  out = `git rev-parse HEAD`\n  ref.gsub(/[`"]/, "")\nend\n' * 20,
+}
+
 MARKDOWN_BODY = "# Notes\n\nSet `sk-test` style keys in your environment, never in docs.\n\n" + "Lorem ipsum dolor sit amet. " * 40 + "\n"
 
 
@@ -106,7 +115,7 @@ def build(root, files):
             (folder / "setup_{}.sh".format(index)).write_text(SHELL_BODY * 4, encoding="utf-8")
             (folder / "run_{}".format(index)).write_text(SHELL_BODY, encoding="utf-8")
         if index % 50 == 0:
-            for relative, body in AUTOEXEC_FILES.items():
+            for relative, body in list(AUTOEXEC_FILES.items()) + list(CODE_FILES.items()):
                 target = folder / "project" / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(body, encoding="utf-8")

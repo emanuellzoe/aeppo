@@ -8,7 +8,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Iterable, List, Optional, Set, Tuple, Union
 
-from aeppo import rules_actions, rules_autoexec, rules_shell
+from aeppo import rules_actions, rules_autoexec, rules_code, rules_shell
 
 
 SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2}
@@ -72,6 +72,18 @@ RULES = {
     "BLD002": Rule("Build script downloads content from the network.", "high", "medium", "build-exec", "Builds should not fetch and use remote content implicitly; vendor it or pin it to a checksum."),
     "GHA004": Rule("Workflow grants write-all permissions.", "medium", "high", "ci-security", "Grant only the permissions each job needs, starting from contents: read."),
     "DEP004": Rule("Install script downloads remote content and pipes it into an interpreter.", "high", "high", "supply-chain", "Do not install until the downloaded script is reviewed; vendor it or pin it to a verified checksum."),
+    "GO001": Rule("exec.Command runs a shell with a command built at runtime.", "high", "medium", "command-execution", "Pass the program and its arguments separately (exec.Command(\"git\", \"log\", ref)) instead of sh -c with a built string."),
+    "RS001": Rule("std::process::Command runs a shell with a command built at runtime.", "high", "medium", "command-execution", "Run the program directly with .arg() for each argument instead of sh -c with a formatted string."),
+    "JV001": Rule("Process API runs a shell with a command built at runtime.", "high", "medium", "command-execution", "Pass the program and each argument as separate strings to ProcessBuilder, without sh -c."),
+    "JV002": Rule("Runtime.exec runs a command string built at runtime.", "medium", "medium", "command-execution", "Use ProcessBuilder with a fixed program and separate, validated arguments."),
+    "JV003": Rule("ObjectInputStream.readObject deserializes data that can execute code through gadget classes.", "medium", "medium", "unsafe-deserialization", "Do not deserialize untrusted data; use a data format such as JSON, or an ObjectInputFilter allow-list."),
+    "PHP001": Rule("PHP evaluates code at runtime (eval, create_function, assert or preg_replace /e).", "high", "medium", "dynamic-code", "Remove the dynamic evaluation; web shells often hide behind eval of decoded data."),
+    "PHP002": Rule("PHP runs a shell command built at runtime.", "medium", "medium", "command-execution", "Avoid the shell; if it is required, pass every value through escapeshellarg and never use request data directly."),
+    "PHP003": Rule("unserialize on data that may be attacker controlled can instantiate arbitrary objects.", "low", "medium", "unsafe-deserialization", "Use json_decode, or pass ['allowed_classes' => false] to unserialize."),
+    "RB001": Rule("Ruby evaluates a string as code at runtime.", "high", "medium", "dynamic-code", "Avoid eval; use explicit dispatch (public_send with an allow-list) or a parser."),
+    "RB002": Rule("Ruby runs a shell command built at runtime.", "medium", "medium", "command-execution", "Use the argv form (system(\"git\", \"log\", ref)) so no shell parses the values."),
+    "RB003": Rule("Marshal.load deserializes data that can execute code.", "medium", "medium", "unsafe-deserialization", "Only load Marshal data you produced yourself; use JSON for anything that crosses a trust boundary."),
+    "NET001": Rule("Program connects to the network and hands the connection to a shell (reverse-shell pattern).", "high", "medium", "backdoor", "Remove it unless the program is an intended remote-access tool."),
     "SRC001": Rule("Bidirectional Unicode control character can make code render differently from how it runs (Trojan Source).", "high", "medium", "obfuscation", "Remove the control character, or confirm it only appears inside an intended string literal."),
 }
 
@@ -200,6 +212,7 @@ def _supported(path):
         or name.startswith(".env.")
         or (not path.suffix and rules_shell.is_shell_script(path))
         or rules_autoexec.kind(path) is not None
+        or rules_code.language(path) is not None
     )
 
 
@@ -317,7 +330,8 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
     findings = _secret_findings(display_path, lines)
     if suffix in _DOCUMENT_EXTENSIONS:
         return _finalize(findings, lines)
-    if suffix in _SOURCE_EXTENSIONS:
+    code_language = rules_code.language(file_path)
+    if suffix in _SOURCE_EXTENSIONS or code_language:
         findings.extend(_bidi_findings(display_path, lines))
     if file_path.name == "requirements.txt":
         findings.extend(_scan_requirements(display_path, lines))
@@ -341,6 +355,18 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
             findings.append(finding)
     elif suffix in rules_shell.SHELL_EXTENSIONS or file_path.name in rules_shell.SHELL_NAMES or (not suffix and lines and rules_shell.has_shell_shebang(lines[0])):
         findings.extend(_finding(display_path, line_number, rule_id) for line_number, rule_id in rules_shell.scan(lines))
+    if code_language:
+        # build.rs lines already reported as build-script execution are not reported twice.
+        build_lines = {finding.line for finding in findings if finding.rule_id in {"BLD001", "BLD002"}}
+        for line_number, rule_id, severity, message in rules_code.scan(code_language, "\n".join(lines)):
+            if line_number in build_lines:
+                continue
+            if message is None and rule_id.startswith("SH"):
+                message = rules_code.shell_message(RULES[rule_id].message)
+            finding = _finding(display_path, line_number, rule_id, message)
+            if severity:
+                finding.severity = severity
+            findings.append(finding)
     return _finalize(findings, lines)
 
 

@@ -98,5 +98,24 @@
   "generated/secrets/anthropic.ts": {"expect": ["1:SEC007:high"], "why": "Anthropic API key"},
   "generated/secrets/private_key.py": {"expect": ["1:SEC003:high"], "why": "PEM private key header"},
   "generated/trojan_source.js": {"expect": ["2:SRC001:high"], "why": "bidirectional control characters in source"},
-  "generated/negative/bidi_in_translations.json": {"expect": [], "why": "bidi characters in data files are legitimate"}
+  "generated/negative/bidi_in_translations.json": {"expect": [], "why": "bidi characters in data files are legitimate"},
+
+  "code/go_sh_c_dynamic.go": {"expect": ["10:GO001:high", "11:GO001:high"], "why": "sh -c with a Sprintf-built command, and CommandContext with concatenation"},
+  "code/go_sh_c_download.go": {"expect": ["6:SH001:high"], "why": "literal bash -c command checked with the shell rules: curl piped into sh"},
+  "code/go_reverse_shell.go": {"expect": ["10:NET001:high"], "why": "net.Dial plus an interactive /bin/sh wired to the connection; reported once"},
+  "code/rust_sh_c_dynamic.rs": {"expect": ["4:RS001:high", "8:SH001:high"], "why": "multi-line Command::new(\"sh\").arg(\"-c\").arg(format!(...)) chain, and a literal curl | bash"},
+  "code/rust_reverse_shell.rs": {"expect": ["8:NET001:high"], "why": "TcpStream::connect with an interactive /bin/sh -i"},
+  "code/java_exec.java": {"expect": ["5:JV001:high", "7:JV002:medium", "8:SH001:high", "9:JV003:medium"], "why": "exec(new String[]{sh,-c,...}), Runtime variable exec, ProcessBuilder with literal curl | sh, ObjectInputStream.readObject"},
+  "code/kotlin_reverse_shell.kt": {"expect": ["5:NET001:high"], "why": "Kotlin Socket plus ProcessBuilder(\"/bin/sh\")"},
+  "code/php_webshell.php": {"expect": ["3:PHP001:high", "4:PHP002:high", "5:PHP002:high", "6:PHP003:high", "7:SH001:high"], "why": "web-shell shapes: eval(base64_decode($_POST)), system($_GET), interpolated backticks, unserialize($_COOKIE), literal curl | sh"},
+  "code/php_exec_escaped.php": {"expect": ["2:PHP002:low", "3:PHP002:medium"], "why": "escapeshellarg lowers exec to low; a bare variable command stays medium"},
+  "code/ruby_shell.rb": {"expect": ["2:RB002:medium", "3:RB002:high", "4:RB002:medium", "5:SH001:high"], "why": "interpolated system, backticks with params, sh -c with concatenation, literal curl | bash"},
+  "code/ruby_eval_marshal.rb": {"expect": ["3:RB001:high", "4:RB003:medium", "5:RB001:high"], "why": "eval of a variable, Marshal.load, paren-less eval of params"},
+  "code/ruby_reverse_shell.rb": {"expect": ["3:NET001:high"], "why": "TCPSocket plus exec(\"/bin/sh -i\", in: s, out: s, err: s)"},
+  "negative/code/go_benign.go": {"expect": [], "why": "argv-style exec.Command, literal sh -c echo, and call shapes inside comments and strings"},
+  "negative/code/rust_benign.rs": {"expect": [], "why": "argv-style Command, a lifetime ('static), literal sh -c echo, call shapes in comments and strings"},
+  "negative/code/java_benign.java": {"expect": [], "why": "ProcessBuilder argv, exec of a String[] without a shell, unrelated .exec, call shapes in comments and strings"},
+  "negative/code/php_benign.php": {"expect": [], "why": "HTML outside PHP tags, PDO ->exec, static ::system, function definitions, assert of an expression, unserialize with allowed_classes, preg_replace without /e"},
+  "negative/code/ruby_benign.rb": {"expect": [], "why": "argv-form system, literal commands, a method named exec, receivers, strings, comments and =begin blocks"},
+  "known_miss/go_shell_in_variable.go": {"expect": [], "known_miss": true, "why": "shell program and flag held in variables; the lexer rules only read literals at the call"}
 }
