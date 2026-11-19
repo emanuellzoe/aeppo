@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <Target Name="BuildClient" BeforeTargets="Build">
+    <Exec Command="npm run build" WorkingDirectory="ClientApp" />
+  </Target>
+</Project>

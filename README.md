@@ -42,7 +42,7 @@ aeppo scan PATH --disable GHA003 --disable SH005
 aeppo scan app.py scripts/deploy.sh   # several files or directories at once
 ```
 
-aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, and extensionless files with a shell shebang), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
+aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, `.ps1`, `.envrc`, and extensionless files with a shell shebang), files that run automatically when a repository is opened, built or installed (`.vscode/tasks.json`, `devcontainer.json`, `Dockerfile`/`Containerfile`, `build.rs`, `composer.json`, Gradle and Maven builds, MSBuild project files, `//go:generate` in `.go` files), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
 
 | Option | Effect |
 |---|---|
@@ -232,7 +232,21 @@ Python files that cannot be parsed (for example Python 2 sources) fall back to l
 | `GHA003` | Action referenced by a tag or branch instead of a full commit SHA | `low` for `actions/*` and `github/*`, `medium` for third-party actions; local `./` actions are not reported |
 | `GHA004` | `permissions: write-all` | `high` when the workflow also runs on `pull_request_target`, `workflow_run` or `issue_comment` |
 
-During directory traversal, aeppo enters `.github/workflows` but skips other hidden directories, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, and `node_modules`.
+### Auto-run entry points
+
+A backdoor in a cloned repository usually sits where a tool runs code without being asked, not in application code. These files are read without a language parser. Commands embedded in them are checked with the shell rules (`SH001`–`SH004`), so `curl … | sh` in a Dockerfile `RUN` step, a VS Code task, a `//go:generate` line or an MSBuild `<Exec>` is reported too.
+
+| ID | Detection | Notes |
+|---|---|---|
+| `AUTO001` | `.vscode/tasks.json` task with `"runOn": "folderOpen"` | Runs as soon as the folder opens in VS Code (once automatic tasks are allowed) |
+| `AUTO002` | `devcontainer.json` `initializeCommand` | Runs on the **host** before the container starts; in-container commands such as `postCreateCommand` are not reported |
+| `BLD001` | Build script starts a shell or download tool: `build.rs` `Command::new("sh"/"curl"…)` (medium), Gradle `commandLine`/`exec {}`/`.execute()` (low), `exec-maven-plugin` running a shell (medium) | `build.rs` runs on every build and when rust-analyzer opens the project; Gradle runs on IDE import. `Command::new("git")` is not reported |
+| `BLD002` | Build script uses the network: `build.rs` with `reqwest`/`ureq`/`TcpStream` (high), Gradle `URL(...).readText()` (high), MSBuild `<DownloadFile>` (medium) | |
+| `DEP003` / `DEP004` | Composer install hooks (`post-install-cmd`, `post-autoload-dump`, …); `DEP004` when one pipes a download into an interpreter | Composer hooks are routine in frameworks, so `DEP003` is low for Composer |
+
+`SH001` also covers PowerShell download cradles (`iwr … | iex`, `IEX (… DownloadString(…))`), and `SH003` covers `powershell -EncodedCommand`. `.envrc` is scanned as a shell script because direnv runs it on `cd`.
+
+During directory traversal, aeppo enters `.github/workflows`, `.vscode` (only `tasks.json`) and `.devcontainer`, but skips other hidden directories, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, and `node_modules`.
 
 ## Security limitations
 
@@ -242,7 +256,7 @@ During directory traversal, aeppo enters `.github/workflows` but skips other hid
 - JavaScript, TypeScript, and secret rules are regular expressions and can miss obfuscated variants or produce false positives.
 - Values that look like placeholders are still reported, but at `low` severity and confidence. This covers values containing `EXAMPLE` (such as the AWS documentation key) and values whose tail repeats one or two characters (`ghp_xxxx...`). Use `--min-severity medium` to hide them. Other well-formed dummy values are reported normally; suppress or baseline them after review.
 - `SEC003` matches the private-key header line only, so headers quoted in documentation or in detection rules are reported too.
-- Go, Rust, Java, and other languages are not scanned for code patterns; only their supported configuration and Markdown files are checked.
+- Go, Rust, Java, PHP, Ruby and other languages are not yet scanned for code patterns. Their auto-run entry points (above) and secrets are checked; `.go` files are scanned for secrets and `//go:generate`, so test fixtures in Go projects can report secret findings (exclude `**/*_test.go` in `.aeppo.toml` if that is noise).
 - Do not post findings containing secrets in public issues. If a real secret is detected, treat it as exposed and revoke or rotate it with the relevant provider.
 - Do not treat a sandbox as an absolute guarantee if dynamic analysis is added in the future.
 - Dependency rules flag review signals only. aeppo does not query vulnerability databases or determine whether a package version is known vulnerable.

