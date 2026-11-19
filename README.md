@@ -88,7 +88,7 @@ Scan staged files before every commit with [pre-commit](https://pre-commit.com/)
 ```yaml
 repos:
   - repo: https://github.com/emanuellzoe/aeppo
-    rev: 717ba6c443ace5a58a2ccd3ed4bfc8fa10371b36  # v0.6.0
+    rev: 8aa10353d22c6ea6c0b3d7f903efbb0cd6ce6eb0  # v0.7.0
     hooks:
       - id: aeppo
 ```
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@717ba6c443ace5a58a2ccd3ed4bfc8fa10371b36 # v0.6.0
+      - uses: emanuellzoe/aeppo@8aa10353d22c6ea6c0b3d7f903efbb0cd6ce6eb0 # v0.7.0
         with:
           path: .
           format: json
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@717ba6c443ace5a58a2ccd3ed4bfc8fa10371b36 # v0.6.0
+      - uses: emanuellzoe/aeppo@8aa10353d22c6ea6c0b3d7f903efbb0cd6ce6eb0 # v0.7.0
         with:
           format: sarif
           output-file: aeppo.sarif
