@@ -1,10 +1,10 @@
 # aeppo
 
-`aeppo` is a local static scanner that flags selected risky code patterns and potentially exposed credentials in Python, JavaScript, and TypeScript source files. It does not execute scanned code.
+`aeppo` is a local static scanner that flags selected risky code patterns and potentially exposed credentials in Python, JavaScript, TypeScript, Go, Rust, Java, Kotlin, PHP and Ruby source files, shell scripts, CI workflows and build files. It does not execute scanned code.
 
 ## Project status
 
-Early prototype. It scans selected Python, JavaScript, TypeScript, configuration, and dependency-manifest files. Python rules match real calls using the standard-library `ast` module; JavaScript, TypeScript, secret, and dependency rules are pattern-based. Findings do not prove that code is malicious or that a credential is valid; false positives and false negatives are possible.
+Early prototype. It scans selected Python, JavaScript, TypeScript, configuration, and dependency-manifest files. Python rules match real calls using the standard-library `ast` module; Go, Rust, Java/Kotlin, PHP and Ruby rules run on a small lexer that separates code from comments and strings; JavaScript, TypeScript, secret, and dependency rules are pattern-based. Findings do not prove that code is malicious or that a credential is valid; false positives and false negatives are possible.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ aeppo scan PATH --disable GHA003 --disable SH005
 aeppo scan app.py scripts/deploy.sh   # several files or directories at once
 ```
 
-aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, `.ps1`, `.envrc`, and extensionless files with a shell shebang), files that run automatically when a repository is opened, built or installed (`.vscode/tasks.json`, `devcontainer.json`, `Dockerfile`/`Containerfile`, `build.rs`, `composer.json`, Gradle and Maven builds, MSBuild project files, `//go:generate` in `.go` files), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
+aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, `.go`, `.rs`, `.java`, `.kt`, `.kts`, `.php`, `.phtml`, `.rb`, `.rake`, `.gemspec`, `Gemfile`, `Rakefile`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, `.ps1`, `.envrc`, and extensionless files with a shell shebang), files that run automatically when a repository is opened, built or installed (`.vscode/tasks.json`, `devcontainer.json`, `Dockerfile`/`Containerfile`, `build.rs`, `composer.json`, Gradle and Maven builds, MSBuild project files, `//go:generate` in `.go` files), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
 
 | Option | Effect |
 |---|---|
@@ -197,7 +197,7 @@ SARIF locations are written relative to the working directory, which is the repo
 | `JS001` | `eval(` call, or `eval` passed as a callback such as `.then(eval)` | Method calls named `eval` are not reported |
 | `JS002` | `exec(`/`execSync(` called bare, on `child_process`, on a `child_process` alias, or on `require('child_process')`; `spawn`/`execFile` of a shell with `-c` and a non-literal command | A bare `exec(` is reported only in files that mention `child_process`, so local helpers named `exec` are not reported. `RegExp.prototype.exec` and method definitions named `exec` are not reported either |
 | `JS003` | `Function(...)` with or without `new`, or `setTimeout`/`setInterval` with a string argument | Type annotations such as `cb: Function` and methods named `Function` (Babel visitors) are not reported |
-| `SRC001` | Bidirectional Unicode control characters in Python, JavaScript, or TypeScript source ([Trojan Source](https://trojansource.codes/)) | Data files such as translations are not checked; suppress intended uses inside string literals |
+| `SRC001` | Bidirectional Unicode control characters in Python, JavaScript, TypeScript, Go, Rust, Java/Kotlin, PHP or Ruby source ([Trojan Source](https://trojansource.codes/)) | Data files such as translations are not checked; suppress intended uses inside string literals |
 | `SEC001` | AWS access key ID pattern beginning with `AKIA` | Does not validate the key or determine whether it is active |
 | `SEC002` | GitHub token patterns beginning with `ghp_`, `gho_`, `ghu_`, `ghs_`, or `ghr_` | Does not validate the token |
 | `SEC003` | Common PEM private-key headers | Detects a header, not whether the complete key is valid |
@@ -246,6 +246,25 @@ A backdoor in a cloned repository usually sits where a tool runs code without be
 
 `SH001` also covers PowerShell download cradles (`iwr … | iex`, `IEX (… DownloadString(…))`), and `SH003` covers `powershell -EncodedCommand`. `.envrc` is scanned as a shell script because direnv runs it on `cd`.
 
+### Go, Rust, Java/Kotlin, PHP and Ruby
+
+These rules run on a lexer that blanks out comments and string contents, so call shapes inside comments, documentation strings, PHP's surrounding HTML, Ruby regex literals and heredocs do not match. A shell started with a **plain string literal** as its command is not reported for that alone; the literal is checked with the shell rules instead, so `exec.Command("sh", "-c", "curl … | sh")` reports `SH001` while `exec.Command("sh", "-c", "make test")` stays quiet. The argv form (`exec.Command("git", "log", ref)`, `system("git", "log", ref)`) runs no shell and is not reported.
+
+| ID | Detection | Notes |
+|---|---|---|
+| `GO001` | `exec.Command`/`CommandContext` running `sh`/`bash`/`cmd`/`powershell` with `-c`//`/C` and a command built at runtime | |
+| `RS001` | `std::process::Command::new("sh")` with `.arg("-c")`/`.args([...])` and a runtime command, across a multi-line builder chain | In `build.rs` the line is reported as `BLD001` instead |
+| `JV001` | `ProcessBuilder(...)`, `.command(...)` or `Runtime.exec(new String[]{...})` running a shell with `-c` and a runtime command; `List.of`, `Arrays.asList`, Kotlin `arrayOf`/`listOf` are unwrapped | |
+| `JV002` | `Runtime.getRuntime().exec(cmd)` (or a `Runtime` variable) with a runtime command string | medium: the string is split on spaces, not run by a shell |
+| `JV003` | `ObjectInputStream` + `.readObject()` | medium; legitimate in RPC code, dangerous on untrusted input |
+| `PHP001` | `eval`, `create_function`, `assert` of a string, `preg_replace` with `/e` | low for `eval` of a plain literal; the message calls out `eval(base64_decode(…))`-style web shells and request data |
+| `PHP002` | `system`, `exec`, `shell_exec`, `passthru`, `popen`, `proc_open`, `pcntl_exec`, backticks with a runtime command | high with `$_GET`/`$_POST`/`$_REQUEST`/`$_COOKIE`/`$_SERVER`, low when wrapped in `escapeshellarg`; `$pdo->exec()` and `Foo::system()` are not calls to these functions |
+| `PHP003` | `unserialize` of a non-literal | low by default (common for internal caches), high with request data; not reported with `allowed_classes` |
+| `RB001` | `eval` of a non-literal (with or without parentheses) | `obj.eval` and method definitions are ignored |
+| `RB002` | `system`, `exec`, `spawn`, `IO.popen`, `Open3.*` with a single runtime string, or a shell with `-c`; interpolated backticks and `%x()` | high with `params[...]`; splats and argv forms are not reported |
+| `RB003` | `Marshal.load` / `Marshal.restore` | medium |
+| `NET001` | Network connection (`net.Dial`, `TcpStream::connect`, `new Socket`, `fsockopen`, `TCPSocket.new`) in the same file as an interactive shell (`/bin/sh`, `sh -i`), or a Go process whose `Stdin`/`Stdout` is the dialed connection | Reverse-shell pattern |
+
 During directory traversal, aeppo enters `.github/workflows`, `.vscode` (only `tasks.json`) and `.devcontainer`, but skips other hidden directories, `.git`, `.hg`, `.svn`, `.venv`, `venv`, `__pycache__`, and `node_modules`.
 
 ## Security limitations
@@ -256,7 +275,8 @@ During directory traversal, aeppo enters `.github/workflows`, `.vscode` (only `t
 - JavaScript, TypeScript, and secret rules are regular expressions and can miss obfuscated variants or produce false positives.
 - Values that look like placeholders are still reported, but at `low` severity and confidence. This covers values containing `EXAMPLE` (such as the AWS documentation key) and values whose tail repeats one or two characters (`ghp_xxxx...`). Use `--min-severity medium` to hide them. Other well-formed dummy values are reported normally; suppress or baseline them after review.
 - `SEC003` matches the private-key header line only, so headers quoted in documentation or in detection rules are reported too.
-- Go, Rust, Java, PHP, Ruby and other languages are not yet scanned for code patterns. Their auto-run entry points (above) and secrets are checked; `.go` files are scanned for secrets and `//go:generate`, so test fixtures in Go projects can report secret findings (exclude `**/*_test.go` in `.aeppo.toml` if that is noise).
+- Go, Rust, Java/Kotlin, PHP and Ruby rules are lexer-based patterns, not type-aware analysis: a shell program or flag held in a variable (`exec.Command(shell, flag, cmd)`), wrapper functions, and aliased imports are not followed, and taint is only approximated (request data on the same call). C, C++, C#, Swift and other languages are checked for secrets and auto-run entry points only.
+- Secret rules also run on these source files, so test fixtures (for example in secret scanners' own `_test.go` files) can report secret findings; exclude them in `.aeppo.toml` if that is noise.
 - Do not post findings containing secrets in public issues. If a real secret is detected, treat it as exposed and revoke or rotate it with the relevant provider.
 - Do not treat a sandbox as an absolute guarantee if dynamic analysis is added in the future.
 - Dependency rules flag review signals only. aeppo does not query vulnerability databases or determine whether a package version is known vulnerable.
