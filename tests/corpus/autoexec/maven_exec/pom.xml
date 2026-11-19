@@ -1,0 +1,14 @@
+<project>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <configuration>
+          <executable>bash</executable>
+          <arguments><argument>scripts/setup.sh</argument></arguments>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

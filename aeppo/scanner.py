@@ -8,7 +8,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Iterable, List, Optional, Set, Tuple, Union
 
-from aeppo import rules_actions, rules_shell
+from aeppo import rules_actions, rules_autoexec, rules_shell
 
 
 SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2}
@@ -66,6 +66,10 @@ RULES = {
     "GHA001": Rule("pull_request_target workflow checks out or fetches code from the pull request.", "high", "high", "ci-security", "Do not run untrusted PR code with pull_request_target; use pull_request, or split the privileged step into a workflow_run job."),
     "GHA002": Rule("Untrusted GitHub context is expanded directly into a script.", "high", "high", "ci-security", "Pass the value through an environment variable (env: TITLE: ${{ ... }}) and quote \"$TITLE\" in the script."),
     "GHA003": Rule("Action is referenced by a mutable tag or branch instead of a full commit SHA.", "medium", "high", "supply-chain", "Pin the action to a full 40-character commit SHA and note the version in a comment."),
+    "AUTO001": Rule("VS Code task runs automatically when the folder is opened (runOn: folderOpen).", "medium", "high", "auto-exec", "Check the task's command before trusting the workspace; automatic tasks run as soon as the folder opens."),
+    "AUTO002": Rule("Dev container initializeCommand runs on the host machine, outside the container.", "medium", "high", "auto-exec", "Review the command before opening the folder in a dev container; it runs with your local user's access."),
+    "BLD001": Rule("Build script runs an external command.", "medium", "medium", "build-exec", "Check what the command does and when it runs; build scripts also run on IDE import or project open."),
+    "BLD002": Rule("Build script downloads content from the network.", "high", "medium", "build-exec", "Builds should not fetch and use remote content implicitly; vendor it or pin it to a checksum."),
     "GHA004": Rule("Workflow grants write-all permissions.", "medium", "high", "ci-security", "Grant only the permissions each job needs, starting from contents: read."),
     "DEP004": Rule("Install script downloads remote content and pipes it into an interpreter.", "high", "high", "supply-chain", "Do not install until the downloaded script is reviewed; vendor it or pin it to a verified checksum."),
     "SRC001": Rule("Bidirectional Unicode control character can make code render differently from how it runs (Trojan Source).", "high", "medium", "obfuscation", "Remove the control character, or confirm it only appears inside an intended string literal."),
@@ -136,6 +140,7 @@ _SOURCE_EXTENSIONS = {".py"} | _JS_EXTENSIONS
 # matched by name in ``_supported``.
 _CONFIG_EXTENSIONS = {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"}
 _MANIFEST_NAMES = {"requirements.txt", "package.json"}
+_ENTERED_HIDDEN_DIRECTORIES = {".github", ".vscode", ".devcontainer"}
 _IGNORED_DIRECTORIES = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules"}
 _DEFAULT_MAX_FILE_SIZE = 1024 * 1024
 
@@ -194,6 +199,7 @@ def _supported(path):
         or name == ".env"
         or name.startswith(".env.")
         or (not path.suffix and rules_shell.is_shell_script(path))
+        or rules_autoexec.kind(path) is not None
     )
 
 
@@ -238,17 +244,24 @@ def _finalize(findings, lines):
 def _candidate_files(target):
     """Return supported files in sorted order, pruning hidden and vendor directories before descending.
 
-    The one hidden directory entered is ``.github``, and inside it only ``workflows/*.yml|yaml``.
+    Hidden directories entered: ``.github`` (only ``workflows/*.yml|yaml``), ``.vscode`` (only
+    ``tasks.json``) and ``.devcontainer`` (only ``devcontainer.json`` files).
     """
     candidates = []
     for directory, subdirectories, files in os.walk(target):
         relative = Path(directory).relative_to(target).parts
-        if ".github" in relative:
+        hidden_root = next((part for part in relative if part in _ENTERED_HIDDEN_DIRECTORIES), None)
+        if hidden_root == ".github":
             subdirectories[:] = ["workflows"] if relative[-1] == ".github" and "workflows" in subdirectories else []
             if relative[-1] == "workflows":
                 candidates.extend(Path(directory, name) for name in files if Path(name).suffix.lower() in {".yml", ".yaml"} and Path(directory, name).is_file())
             continue
-        subdirectories[:] = [name for name in subdirectories if name == ".github" or (not name.startswith(".") and name not in _IGNORED_DIRECTORIES)]
+        if hidden_root:
+            # .vscode: tasks.json only. .devcontainer: devcontainer.json, including named sub-configs.
+            subdirectories[:] = [] if hidden_root == ".vscode" else [name for name in subdirectories if not name.startswith(".")]
+            candidates.extend(Path(directory, name) for name in files if rules_autoexec.kind(Path(directory, name)) in {"vscode_tasks", "devcontainer"} and Path(directory, name).is_file())
+            continue
+        subdirectories[:] = [name for name in subdirectories if name in _ENTERED_HIDDEN_DIRECTORIES or (not name.startswith(".") and name not in _IGNORED_DIRECTORIES)]
         for name in files:
             path = Path(directory, name)
             if _supported(path) and path.is_file():
@@ -314,13 +327,19 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
         findings.extend(_scan_python(display_path, lines))
     elif suffix in _JS_EXTENSIONS:
         findings.extend(_scan_javascript(display_path, lines))
+    elif rules_autoexec.kind(file_path):
+        for line_number, rule_id, severity, message in rules_autoexec.scan(rules_autoexec.kind(file_path), lines):
+            finding = _finding(display_path, line_number, rule_id, message)
+            if severity:
+                finding.severity = severity
+            findings.append(finding)
     elif rules_actions.is_actions_file(file_path):
         for line_number, rule_id, severity in rules_actions.scan(lines):
             finding = _finding(display_path, line_number, rule_id)
             if severity:
                 finding.severity = severity
             findings.append(finding)
-    elif suffix in rules_shell.SHELL_EXTENSIONS or (not suffix and lines and rules_shell.has_shell_shebang(lines[0])):
+    elif suffix in rules_shell.SHELL_EXTENSIONS or file_path.name in rules_shell.SHELL_NAMES or (not suffix and lines and rules_shell.has_shell_shebang(lines[0])):
         findings.extend(_finding(display_path, line_number, rule_id) for line_number, rule_id in rules_shell.scan(lines))
     return _finalize(findings, lines)
 

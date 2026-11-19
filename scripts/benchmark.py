@@ -83,7 +83,15 @@ jobs:
           make test
 '''
 
-MARKDOWN_BODY ="# Notes\n\nSet `sk-test` style keys in your environment, never in docs.\n\n" + "Lorem ipsum dolor sit amet. " * 40 + "\n"
+AUTOEXEC_FILES = {
+    "Dockerfile": "FROM python:3.12-slim\nRUN apt-get update \\\n    && apt-get install -y curl\nRUN curl -fsSL -o /tmp/t.tgz https://example.invalid/t.tgz\n" * 3,
+    "build.rs": 'use std::process::Command;\nfn main() {\n    let rev = Command::new("git").args(["rev-parse", "HEAD"]).output().unwrap();\n    println!("cargo:rustc-env=REV={:?}", rev.stdout);\n}\n',
+    ".vscode/tasks.json": '{\n  "version": "2.0.0",\n  "tasks": [{ "label": "build", "type": "shell", "command": "npm run build" }]\n}\n',
+    "setup.ps1": "$ErrorActionPreference = 'Stop'\nInvoke-WebRequest -Uri https://example.invalid/t.zip -OutFile t.zip\nExpand-Archive t.zip -DestinationPath tools\n",
+    "build.gradle.kts": 'plugins { kotlin("jvm") version "2.0.0" }\ndependencies { implementation("org.slf4j:slf4j-api:2.0.13") }\n',
+}
+
+MARKDOWN_BODY = "# Notes\n\nSet `sk-test` style keys in your environment, never in docs.\n\n" + "Lorem ipsum dolor sit amet. " * 40 + "\n"
 
 
 def build(root, files):
@@ -97,6 +105,11 @@ def build(root, files):
             (folder / "README_{}.md".format(index)).write_text(MARKDOWN_BODY, encoding="utf-8")
             (folder / "setup_{}.sh".format(index)).write_text(SHELL_BODY * 4, encoding="utf-8")
             (folder / "run_{}".format(index)).write_text(SHELL_BODY, encoding="utf-8")
+        if index % 50 == 0:
+            for relative, body in AUTOEXEC_FILES.items():
+                target = folder / "project" / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(body, encoding="utf-8")
     workflows = root / ".github" / "workflows"
     workflows.mkdir(parents=True, exist_ok=True)
     for index in range(max(1, files // 30)):
