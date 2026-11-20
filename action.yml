@@ -33,6 +33,10 @@ inputs:
     description: Skip files larger than this many bytes.
     required: false
     default: "1048576"
+  osv:
+    description: Set to "true" to look up lockfile dependency versions in OSV.dev for known vulnerabilities and malware (VULN001, MAL001). Sends package names and versions to api.osv.dev.
+    required: false
+    default: "false"
   python-version:
     description: Python version used to run aeppo.
     required: false
@@ -62,4 +66,5 @@ runs:
         AEPPO_MIN_SEVERITY: ${{ inputs.min-severity }}
         AEPPO_BASELINE: ${{ inputs.baseline }}
         AEPPO_OUTPUT_FILE: ${{ inputs.output-file }}
+        AEPPO_OSV: ${{ inputs.osv }}
       run: python "$AEPPO_ACTION_PATH/scripts/action_entry.py"

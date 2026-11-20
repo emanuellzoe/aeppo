@@ -1,6 +1,6 @@
 # aeppo
 
-`aeppo` is a local static scanner that flags selected risky code patterns and potentially exposed credentials in Python, JavaScript, TypeScript, Go, Rust, Java, Kotlin, PHP and Ruby source files, shell scripts, CI workflows and build files. It does not execute scanned code.
+`aeppo` is a local static scanner that flags selected risky code patterns and potentially exposed credentials in Python, JavaScript, TypeScript, Go, Rust, Java, Kotlin, PHP and Ruby source files, shell scripts, CI workflows and build files. With `--osv` it also looks up the exact dependency versions in lockfiles in [OSV.dev](https://osv.dev/) to report known vulnerabilities and malicious packages. It does not execute scanned code.
 
 ## Project status
 
@@ -40,6 +40,7 @@ aeppo scan PATH --baseline aeppo-baseline.json
 aeppo scan PATH --exclude '**/generated/**' --max-file-size 524288
 aeppo scan PATH --disable GHA003 --disable SH005
 aeppo scan app.py scripts/deploy.sh   # several files or directories at once
+aeppo scan PATH --osv                 # also check lockfile dependencies in OSV.dev
 ```
 
 aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, `.go`, `.rs`, `.java`, `.kt`, `.kts`, `.php`, `.phtml`, `.rb`, `.rake`, `.gemspec`, `Gemfile`, `Rakefile`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, `.ps1`, `.envrc`, and extensionless files with a shell shebang), files that run automatically when a repository is opened, built or installed (`.vscode/tasks.json`, `devcontainer.json`, `Dockerfile`/`Containerfile`, `build.rs`, `composer.json`, Gradle and Maven builds, MSBuild project files, `//go:generate` in `.go` files), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
@@ -52,6 +53,7 @@ aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`,
 | `--baseline FILE` | Ignore findings already recorded in a JSON report (see below) |
 | `--disable RULE` | Turn off a rule ID; may be repeated. Unknown IDs are an error |
 | `--config FILE` / `--no-config` | Use a specific settings file, or ignore `.aeppo.toml` (see below) |
+| `--osv` | Look up lockfile dependency versions in OSV.dev (see [below](#known-vulnerable-and-malicious-dependencies)) |
 | `--skip-unsupported` | Skip file arguments aeppo cannot scan instead of failing (used by the pre-commit hook) |
 
 Text output includes the path, line number, rule ID, severity, confidence, category, explanation, and recommendation. JSON output is an array of findings with `path`, `line`, `rule_id`, `message`, `severity`, `confidence`, `category`, `recommendation`, and `fingerprint` fields. SARIF output follows SARIF 2.1.0 and can be uploaded to GitHub code scanning.
@@ -60,7 +62,7 @@ Exit codes:
 
 - `0`: scan completed with no findings (after severity, suppression, and baseline filtering)
 - `1`: scan completed and findings were reported
-- `2`: target could not be scanned, arguments were invalid, or the config/baseline/output file could not be used
+- `2`: target could not be scanned, arguments were invalid, the config/baseline/output file could not be used, or `--osv` could not reach OSV.dev (the report of the other rules is still printed)
 
 ## Configuration file
 
@@ -72,6 +74,7 @@ disable = ["SH005"]                            # rule IDs to turn off
 min-severity = "medium"                        # low | medium | high
 max-file-size = 1048576                        # bytes
 baseline = "aeppo-baseline.json"               # relative to this file
+osv = true                                     # same as --osv
 ```
 
 aeppo looks for `.aeppo.toml` starting from the scanned directory and moving up to the repository root (the first directory containing `.git`). When several paths or individual files are given, as pre-commit does, the search starts from the current directory. Use `--config FILE` to choose a file or `--no-config` to ignore it.
@@ -119,6 +122,31 @@ aeppo scan . --baseline aeppo-baseline.json
 
 Findings are matched by path, rule ID, and a fingerprint of the whitespace-normalized source line, so they stay matched when surrounding lines move. Editing the flagged line or adding a new finding makes it reported again. Review the baseline file before committing it, because it records where secrets were found (but not the secret values).
 
+## Known-vulnerable and malicious dependencies
+
+`aeppo scan PATH --osv` reads the exact versions pinned in lockfiles and looks them up in [OSV.dev](https://osv.dev/), which aggregates the GitHub Advisory Database, PyPA, RustSec, the Go vulnerability database, RubySec and the [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) feed.
+
+| Ecosystem | Files read |
+|---|---|
+| npm | `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock` (classic and Berry), `pnpm-lock.yaml` (v5 to v9) |
+| PyPI | `poetry.lock`, `uv.lock`, `requirements*.txt` and `requirements/*.txt` (only `name==version` pins) |
+| crates.io | `Cargo.lock` |
+| Go | `go.mod` `require` directives, after `replace` (`go.sum` also lists versions that are not used) |
+| Packagist | `composer.lock` |
+| RubyGems | `Gemfile.lock` (`GEM` section) |
+
+| ID | Detection | Severity |
+|---|---|---|
+| `VULN001` | A pinned version is affected by a published advisory. The message names the advisory and CVE, and the recommendation names the first fixed version | From the advisory: GitHub severity or the CVSS v3 score (critical and high are reported as `high`); `medium` when the advisory gives none; `low` for informational RustSec notices such as `unmaintained` |
+| `MAL001` | A pinned version is listed as malicious (`MAL-` advisories) | Always `high` |
+
+- **What is sent:** only the ecosystem, package name and version of each locked dependency, to `api.osv.dev`. Nothing else leaves the machine. Without `--osv` (or `osv = true`) aeppo makes no network requests. Packages from workspaces, local paths, git and URL sources are not sent, but private registry packages listed in a lockfile are; do not use `--osv` if their names are confidential.
+- **Cache:** full advisory records are cached in `~/.cache/aeppo/osv` (`$XDG_CACHE_HOME` or `$AEPPO_CACHE_DIR` override it) and refetched when OSV reports a newer revision. Every scan still asks OSV which advisories apply, so newly published ones are reported the next time you scan.
+- **Findings** point at the lockfile line of the package and work with `--min-severity`, `--disable`, baselines and SARIF like other rules. Their fingerprint is the package, version and advisory, so upgrading the package clears the finding from a baseline match. Lockfiles cannot carry suppression comments; use a baseline or `--disable` instead.
+- Lockfiles are read up to 64 MiB regardless of `--max-file-size`; `node_modules` and hidden directories are skipped.
+- A version range in `package.json`, `pyproject.toml` or an unpinned `requirements.txt` line is not checked, because the installed version is not known. Commit a lockfile to have it checked.
+- An advisory matching a version does not mean the vulnerable code is reachable from the project; review the advisory before treating it as exploitable.
+
 ## GitHub Action
 
 Add aeppo to a workflow after checking out the repository:
@@ -157,6 +185,7 @@ Both actions are pinned to full commit SHAs; verify the source and update the pi
 | `baseline` | | JSON baseline written by `aeppo scan --format json` |
 | `output-file` | | Write the report to this file instead of the log |
 | `fail-on-findings` | `true` | Fail the job when findings are reported |
+| `osv` | `false` | `"true"` checks lockfile dependencies in OSV.dev (`VULN001`, `MAL001`); needs network access from the runner |
 | `python-version` | `3.12` | Python used to run aeppo |
 
 ### Uploading results to GitHub code scanning
@@ -279,7 +308,7 @@ During directory traversal, aeppo enters `.github/workflows`, `.vscode` (only `t
 - Secret rules also run on these source files, so test fixtures (for example in secret scanners' own `_test.go` files) can report secret findings; exclude them in `.aeppo.toml` if that is noise.
 - Do not post findings containing secrets in public issues. If a real secret is detected, treat it as exposed and revoke or rotate it with the relevant provider.
 - Do not treat a sandbox as an absolute guarantee if dynamic analysis is added in the future.
-- Dependency rules flag review signals only. aeppo does not query vulnerability databases or determine whether a package version is known vulnerable.
+- `DEP` rules flag review signals only. Known vulnerabilities and malware are reported only with `--osv`, only for versions pinned in a lockfile, and only when OSV.dev lists them; a new malicious package can be in use before any database lists it.
 
 ## Tests
 

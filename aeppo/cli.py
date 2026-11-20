@@ -3,7 +3,7 @@ import fnmatch
 import sys
 from pathlib import Path
 
-from aeppo import __version__
+from aeppo import __version__, lockfiles, osv, rules_vulns
 from aeppo.config import CONFIG_NAME, find_config, load_config
 from aeppo.report import format_json, format_sarif, format_text
 from aeppo.scanner import SEVERITY_ORDER, _supported, filter_findings, load_baseline, scan_path
@@ -43,6 +43,7 @@ def _settings(args):
         "min_severity": args.min_severity or config.get("min_severity", "low"),
         "max_file_size": args.max_file_size or config.get("max_file_size", _DEFAULT_MAX_FILE_SIZE),
         "baseline": load_baseline(baseline_path) if baseline_path else None,
+        "osv": args.osv or config.get("osv", False),
     }
 
 
@@ -53,11 +54,25 @@ def _scan_targets(args, settings, errors):
         if target.is_file():
             if any(fnmatch.fnmatch(target.as_posix(), pattern) for pattern in settings["exclude"]):
                 continue
-            if args.skip_unsupported and not _supported(target):
+            if not _supported(target) and (args.skip_unsupported or (settings["osv"] and lockfiles.kind(target))):
                 continue
         findings = scan_path(target, excludes=settings["exclude"], max_file_size=settings["max_file_size"], errors=errors)
         results.extend((finding, target) for finding in findings)
     return results
+
+
+def _check_dependencies(args, settings, results, errors):
+    """Add VULN001/MAL001 findings from OSV.dev to ``results``; return False if OSV failed."""
+    targets = [target for target in args.paths if not (target.is_file() and any(fnmatch.fnmatch(target.as_posix(), pattern) for pattern in settings["exclude"]))]
+    client = osv.Client(cache_dir=osv.default_cache_dir())
+    try:
+        findings, package_count, lockfile_count = rules_vulns.scan(targets, client, settings["exclude"], errors)
+    except osv.OSVError as error:
+        print("aeppo: error: could not check dependencies with OSV.dev: {}".format(error), file=sys.stderr)
+        return False
+    results.extend(findings)
+    print("aeppo: checked {} package version(s) from {} lockfile(s) against OSV.dev".format(package_count, lockfile_count), file=sys.stderr)
+    return True
 
 
 def main(argv=None):
@@ -75,6 +90,7 @@ def main(argv=None):
     scan_parser.add_argument("--output", type=Path, metavar="FILE", help="write the report to FILE instead of standard output")
     scan_parser.add_argument("--config", type=Path, metavar="FILE", help="read settings from FILE instead of searching for {}".format(CONFIG_NAME))
     scan_parser.add_argument("--no-config", action="store_true", help="ignore {} files".format(CONFIG_NAME))
+    scan_parser.add_argument("--osv", action="store_true", help="look up lockfile dependency versions in OSV.dev for known vulnerabilities and malware (sends package names and versions)")
     scan_parser.add_argument("--skip-unsupported", action="store_true", help="skip file targets aeppo cannot scan instead of failing (used by pre-commit)")
     args = parser.parse_args(argv)
 
@@ -84,6 +100,7 @@ def main(argv=None):
             raise ValueError("--max-file-size must be greater than zero")
         settings = _settings(args)
         results = _scan_targets(args, settings, errors)
+        osv_failed = settings["osv"] and not _check_dependencies(args, settings, results, errors)
         kept = filter_findings(
             [finding for finding, _target in results],
             min_severity=settings["min_severity"],
@@ -113,6 +130,8 @@ def main(argv=None):
         print("aeppo: wrote {} finding(s) to {}".format(len(kept), args.output), file=sys.stderr)
     else:
         print(report)
+    if osv_failed:
+        return 2
     return 1 if kept else 0
 
 
