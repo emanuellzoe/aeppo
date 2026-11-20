@@ -24,6 +24,8 @@ def main():
     output_file = os.environ.get("AEPPO_OUTPUT_FILE", "").strip()
     if output_file:
         arguments.extend(["--output", output_file])
+    if os.environ.get("AEPPO_OSV", "false").strip().lower() == "true":
+        arguments.append("--osv")
     for pattern in os.environ.get("AEPPO_EXCLUDES", "").splitlines():
         pattern = pattern.strip()
         if pattern:

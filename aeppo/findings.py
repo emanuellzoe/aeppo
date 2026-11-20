@@ -75,6 +75,8 @@ RULES = {
     "RB002": Rule("Ruby runs a shell command built at runtime.", "medium", "medium", "command-execution", "Use the argv form (system(\"git\", \"log\", ref)) so no shell parses the values."),
     "RB003": Rule("Marshal.load deserializes data that can execute code.", "medium", "medium", "unsafe-deserialization", "Only load Marshal data you produced yourself; use JSON for anything that crosses a trust boundary."),
     "NET001": Rule("Program connects to the network and hands the connection to a shell (reverse-shell pattern).", "high", "medium", "backdoor", "Remove it unless the program is an intended remote-access tool."),
+    "VULN001": Rule("Dependency version has a known vulnerability.", "medium", "high", "vulnerable-dependency", "Upgrade to a fixed version and regenerate the lockfile."),
+    "MAL001": Rule("Dependency version is listed as a malicious package.", "high", "high", "malware", "Do not install it; if it was installed, treat the machine and its credentials as compromised."),
     "SRC001": Rule("Bidirectional Unicode control character can make code render differently from how it runs (Trojan Source).", "high", "medium", "obfuscation", "Remove the control character, or confirm it only appears inside an intended string literal."),
 }
 

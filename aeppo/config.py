@@ -7,6 +7,7 @@ Supported top-level keys::
     min-severity = "medium"           # low | medium | high
     max-file-size = 1048576           # bytes
     baseline = "aeppo-baseline.json"  # relative to the config file
+    osv = true                        # look up lockfile dependencies in OSV.dev (like --osv)
 
 Python 3.11+ parses the file with ``tomllib``. Older versions use a small parser for the subset
 above (strings, integers, booleans, arrays), so aeppo keeps no runtime dependencies. Unknown keys
@@ -26,6 +27,7 @@ _KEYS = {
     "min-severity": "one of low, medium, high",
     "max-file-size": "a positive integer",
     "baseline": "a path string",
+    "osv": "true or false",
 }
 
 
@@ -71,6 +73,10 @@ def load_config(path):
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ValueError("{}: max-file-size must be {}".format(path, _KEYS["max-file-size"]))
         config["max_file_size"] = value
+    if "osv" in raw:
+        if not isinstance(raw["osv"], bool):
+            raise ValueError("{}: osv must be {}".format(path, _KEYS["osv"]))
+        config["osv"] = raw["osv"]
     if "baseline" in raw:
         if not isinstance(raw["baseline"], str) or not raw["baseline"]:
             raise ValueError("{}: baseline must be {}".format(path, _KEYS["baseline"]))

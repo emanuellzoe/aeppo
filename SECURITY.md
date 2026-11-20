@@ -19,6 +19,7 @@ aeppo reads files as text and never executes, imports or installs the code it sc
 - aeppo executing, importing or evaluating anything from a scanned repository;
 - a crafted file that makes aeppo write outside its output, read files outside the scan target, or hang (for example catastrophic regex backtracking);
 - the GitHub Action exposing secrets, or running with more permissions than documented;
+- `--osv` sending anything other than package ecosystems, names and versions, or making network requests without `--osv`;
 - findings or reports that leak more of a detected secret than the matched line.
 
 A missed detection (false negative) or a false positive is not a vulnerability; please open a normal issue for those, with an inert sample if possible.
