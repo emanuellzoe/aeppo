@@ -14,7 +14,7 @@ Thanks for helping improve aeppo. It is a small, zero-dependency scanner, and th
 ```sh
 python -m unittest discover -s tests   # all tests, including the detection corpus
 python scripts/benchmark.py --max-ratio 120   # scan speed relative to reading the files
-python -m aeppo.cli scan .   # aeppo scans itself; .aeppo.toml excludes the corpus
+python -m aeppo scan .   # aeppo scans itself; .aeppo.toml excludes the corpus
 ```
 
 ## Layout

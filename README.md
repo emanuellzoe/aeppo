@@ -34,7 +34,7 @@ This installs the `aeppo` command using the package metadata in `pyproject.toml`
 Or run directly from a checkout without installing:
 
 ```bash
-python3 -m aeppo.cli scan PATH
+python3 -m aeppo scan PATH
 ```
 
 ## Usage
@@ -150,6 +150,7 @@ Findings are matched by path, rule ID, and a fingerprint of the whitespace-norma
 
 - **What is sent:** only the ecosystem, package name and version of each locked dependency, to `api.osv.dev`. Nothing else leaves the machine. Without `--osv` (or `osv = true`) aeppo makes no network requests. Packages from workspaces, local paths, git and URL sources are not sent, but private registry packages listed in a lockfile are; do not use `--osv` if their names are confidential.
 - **Cache:** full advisory records are cached in `~/.cache/aeppo/osv` (`$XDG_CACHE_HOME` or `$AEPPO_CACHE_DIR` override it) and refetched when OSV reports a newer revision. Every scan still asks OSV which advisories apply, so newly published ones are reported the next time you scan.
+- **Summary:** text output ends with one line per affected package version: the number of advisories by severity, the lockfile locations, and the single upgrade that fixes every advisory with a listed fix (for example `tar 6.2.1 (npm): 12 advisories (1 critical, 8 high, 3 medium) -> upgrade to 7.5.21 or later`). Malicious packages are listed first. When a version has several advisories, each finding's recommendation also names that upgrade.
 - **Findings** point at the lockfile line of the package and work with `--min-severity`, `--disable`, baselines and SARIF like other rules. Their fingerprint is the package, version and advisory, so upgrading the package clears the finding from a baseline match. Lockfiles cannot carry suppression comments; use a baseline or `--disable` instead.
 - Lockfiles are read up to 64 MiB regardless of `--max-file-size`; `node_modules` and hidden directories are skipped.
 - A version range in `package.json`, `pyproject.toml` or an unpinned `requirements.txt` line is not checked, because the installed version is not known. Commit a lockfile to have it checked.

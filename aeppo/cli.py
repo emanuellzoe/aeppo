@@ -61,12 +61,12 @@ def _scan_targets(args, settings, errors):
     return results
 
 
-def _check_dependencies(args, settings, results, errors):
+def _check_dependencies(args, settings, results, errors, details):
     """Add VULN001/MAL001 findings from OSV.dev to ``results``; return False if OSV failed."""
     targets = [target for target in args.paths if not (target.is_file() and any(fnmatch.fnmatch(target.as_posix(), pattern) for pattern in settings["exclude"]))]
     client = osv.Client(cache_dir=osv.default_cache_dir())
     try:
-        findings, package_count, lockfile_count = rules_vulns.scan(targets, client, settings["exclude"], errors)
+        findings, package_count, lockfile_count = rules_vulns.scan(targets, client, settings["exclude"], errors, details)
     except osv.OSVError as error:
         print("aeppo: error: could not check dependencies with OSV.dev: {}".format(error), file=sys.stderr)
         return False
@@ -95,12 +95,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     errors = []
+    details = {}
     try:
         if args.max_file_size is not None and args.max_file_size <= 0:
             raise ValueError("--max-file-size must be greater than zero")
         settings = _settings(args)
         results = _scan_targets(args, settings, errors)
-        osv_failed = settings["osv"] and not _check_dependencies(args, settings, results, errors)
+        osv_failed = settings["osv"] and not _check_dependencies(args, settings, results, errors, details)
         kept = filter_findings(
             [finding for finding, _target in results],
             min_severity=settings["min_severity"],
@@ -119,7 +120,7 @@ def main(argv=None):
     elif args.format == "sarif":
         report = format_sarif(kept, uri_for=lambda finding: _sarif_uri(targets[id(finding)], finding.path))
     else:
-        report = format_text(kept)
+        report = "\n".join([format_text(kept)] + rules_vulns.summary(kept, details))
 
     if args.output:
         try:

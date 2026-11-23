@@ -4,6 +4,9 @@ All notable changes to aeppo. Versions follow [Semantic Versioning](https://semv
 
 ## Unreleased
 
+- `--osv` text output ends with a per-package summary that names the one upgrade fixing every advisory with a fix (for example `tar 6.2.1 -> 7.5.21`), and recommendations of packages with several advisories name that upgrade too.
+- `python -m aeppo` works (previously `python -m aeppo.cli`, which still works).
+
 ## 0.8.0 (2026-11-23)
 
 - `--osv` (or `osv = true` in `.aeppo.toml`, or the Action's `osv` input) looks up exact versions from `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `poetry.lock`, `uv.lock`, pinned `requirements*.txt`, `Cargo.lock`, `go.mod`, `composer.lock` and `Gemfile.lock` in OSV.dev: `VULN001` for known vulnerabilities (with the first fixed version) and `MAL001` for packages listed as malicious. Off by default; without it aeppo makes no network requests.
