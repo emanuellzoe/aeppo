@@ -196,6 +196,37 @@ class FindingTests(unittest.TestCase):
         self.assertIn("informational advisory (unmaintained)", info.message)
 
 
+class SummaryTests(unittest.TestCase):
+    def test_one_upgrade_covers_every_advisory(self):
+        def advisory(vuln_id, fixed, severity):
+            item = record(vuln_id, "tar", database_specific={"severity": severity})
+            item["affected"][0]["ranges"][0]["events"][1]["fixed"] = fixed
+            return item
+
+        package = lockfiles.Package("npm", "tar", "6.2.1", 7)
+        results = {("npm", "tar", "6.2.1"): [advisory("GHSA-aaaa-aaaa-aaaa", "7.5.3", "HIGH"), advisory("GHSA-bbbb-bbbb-bbbb", "7.5.21", "CRITICAL"), record("GHSA-cccc-cccc-cccc", "tar", affected=[])]}
+        details = {}
+        found = rules_vulns.findings_for([("a/package-lock.json", ".", package), ("pnpm-lock.yaml", ".", package)], results, details)
+        findings = [finding for finding, _target in found]
+        self.assertEqual(len(findings), 6)
+        self.assertIn("Upgrade tar to 7.5.21 or later, which fixes all 2 advisories with a fix for tar 6.2.1 (this one is fixed in 7.5.3)", findings[0].recommendation)
+        self.assertTrue(findings[1].recommendation.startswith("Upgrade tar to 7.5.21 or later and regenerate"))
+        lines = rules_vulns.summary(findings, details)
+        self.assertEqual(lines[1], "Dependency summary (1 package version(s) with advisories):")
+        self.assertEqual(lines[2], "  tar 6.2.1 (npm): 3 advisories (1 critical, 1 high, 1 unrated) -> upgrade to 7.5.21 or later (1 without a fix)")
+        self.assertEqual(lines[3], "      a/package-lock.json:7, pnpm-lock.yaml:7")
+        self.assertEqual(rules_vulns.summary([], details), [])
+
+    def test_malware_sorts_first(self):
+        details = {}
+        results = {("npm", "aeppo-test-malware", "1.0.0"): [record("MAL-2026-0001", "aeppo-test-malware")], ("npm", "lodash", "4.17.15"): [record("GHSA-dddd-dddd-dddd", "lodash", database_specific={"severity": "HIGH"})]}
+        entries = [("package-lock.json", ".", lockfiles.Package("npm", "lodash", "4.17.15", 3)), ("package-lock.json", ".", lockfiles.Package("npm", "aeppo-test-malware", "1.0.0", 9))]
+        findings = [finding for finding, _target in rules_vulns.findings_for(entries, results, details)]
+        lines = rules_vulns.summary(findings, details)
+        self.assertIn("aeppo-test-malware 1.0.0 (npm): 1 advisory (1 malicious) -> MALICIOUS", lines[2])
+        self.assertIn("lodash 4.17.15 (npm): 1 advisory (1 high) -> upgrade to 9.9.9 or later", lines[4])
+
+
 class CommandLineTests(unittest.TestCase):
     def run_cli(self, *argv):
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -230,6 +261,9 @@ class CommandLineTests(unittest.TestCase):
         self.assertIn("checked 1 package version(s) from 1 lockfile(s)", stderr)
         # The lockfile inside node_modules was not read.
         self.assertEqual([url for method, url in self.fake.calls if method == "POST"], [osv.API + "/querybatch"])
+        with mock.patch("aeppo.osv._http_fetch", self.fake):
+            _code, text, _stderr = self.run_cli("scan", str(self.root / "app"), "--no-config", "--osv")
+        self.assertIn("Dependency summary (1 package version(s) with advisories):\n  time 0.1.43 (crates.io): 1 advisory (1 medium) -> upgrade to 9.9.9 or later\n      Cargo.lock:1", text)
 
     def test_lockfile_as_file_target_baseline_and_disable(self):
         lockfile = str(self.root / "app" / "Cargo.lock")
@@ -255,6 +289,15 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(code, 1)
         (self.root / "app" / ".aeppo.toml").write_text('osv = "yes"\n')
         self.assertEqual(self.run_cli("scan", str(self.root / "app"))[0], 2)
+
+
+class ModuleEntryPointTests(unittest.TestCase):
+    def test_python_dash_m_aeppo(self):
+        import subprocess
+        import sys
+        result = subprocess.run([sys.executable, "-m", "aeppo", "--version"], cwd=str(Path(__file__).resolve().parents[1]), capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(result.stdout.startswith("aeppo "))
 
 
 if __name__ == "__main__":
