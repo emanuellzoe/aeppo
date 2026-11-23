@@ -4,6 +4,8 @@ All notable changes to aeppo. Versions follow [Semantic Versioning](https://semv
 
 ## Unreleased
 
+## 0.9.0 (2026-11-23)
+
 - `aeppo check REPO` vets a repository before you try it: a hardened shallow clone into a temporary directory (no hooks, submodules, LFS, symlinks, stored credentials or non-https transports), all static rules plus OSV.dev, findings grouped by when they would run (open, install, build, run, tests, dependencies), and a verdict (`DANGER`, `REVIEW`, `NO KNOWN ISSUES`; exit codes 3, 1, 0). The repository's `.aeppo.toml` and suppression comments are ignored.
 - `--osv` text output ends with a per-package summary that names the one upgrade fixing every advisory with a fix (for example `tar 6.2.1 -> 7.5.21`), and recommendations of packages with several advisories name that upgrade too.
 - `python -m aeppo` works (previously `python -m aeppo.cli`, which still works).
