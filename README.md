@@ -13,7 +13,15 @@ Early prototype. It scans selected Python, JavaScript, TypeScript, configuration
 
 ## Installation
 
-Clone the public repository and install locally:
+Install from [PyPI](https://pypi.org/project/aeppo/):
+
+```bash
+python3 -m pip install aeppo
+# or, as an isolated command-line tool:
+pipx install aeppo
+```
+
+Or clone the public repository and install locally:
 
 ```bash
 git clone https://github.com/emanuellzoe/aeppo.git
@@ -91,7 +99,7 @@ Scan staged files before every commit with [pre-commit](https://pre-commit.com/)
 ```yaml
 repos:
   - repo: https://github.com/emanuellzoe/aeppo
-    rev: 8aa10353d22c6ea6c0b3d7f903efbb0cd6ce6eb0  # v0.7.0
+    rev: eb053ae20834d04aafa829baa6c15e429d8bcb9d  # v0.8.0
     hooks:
       - id: aeppo
 ```
@@ -162,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@8aa10353d22c6ea6c0b3d7f903efbb0cd6ce6eb0 # v0.7.0
+      - uses: emanuellzoe/aeppo@eb053ae20834d04aafa829baa6c15e429d8bcb9d # v0.8.0
         with:
           path: .
           format: json
@@ -201,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: emanuellzoe/aeppo@8aa10353d22c6ea6c0b3d7f903efbb0cd6ce6eb0 # v0.7.0
+      - uses: emanuellzoe/aeppo@eb053ae20834d04aafa829baa6c15e429d8bcb9d # v0.8.0
         with:
           format: sarif
           output-file: aeppo.sarif
