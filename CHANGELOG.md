@@ -4,6 +4,8 @@ All notable changes to aeppo. Versions follow [Semantic Versioning](https://semv
 
 ## Unreleased
 
+## 0.8.0 (2026-11-23)
+
 - `--osv` (or `osv = true` in `.aeppo.toml`, or the Action's `osv` input) looks up exact versions from `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `poetry.lock`, `uv.lock`, pinned `requirements*.txt`, `Cargo.lock`, `go.mod`, `composer.lock` and `Gemfile.lock` in OSV.dev: `VULN001` for known vulnerabilities (with the first fixed version) and `MAL001` for packages listed as malicious. Off by default; without it aeppo makes no network requests.
 - Split `aeppo/scanner.py` into rule modules (`findings`, `rules_python`, `rules_js`, `rules_secrets`, `rules_deps`). Findings, fingerprints and the public API (`aeppo.scanner.scan_path`, `scan_file`, `filter_findings`, `load_baseline`, `RULES`, `Finding`) are unchanged.
 - Added `SECURITY.md`, `CONTRIBUTING.md` and this changelog.
