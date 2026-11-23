@@ -49,6 +49,7 @@ aeppo scan PATH --exclude '**/generated/**' --max-file-size 524288
 aeppo scan PATH --disable GHA003 --disable SH005
 aeppo scan app.py scripts/deploy.sh   # several files or directories at once
 aeppo scan PATH --osv                 # also check lockfile dependencies in OSV.dev
+aeppo check owner/repo                # vet a GitHub repository before trying it (see below)
 ```
 
 aeppo scans `.py`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, `.go`, `.rs`, `.java`, `.kt`, `.kts`, `.php`, `.phtml`, `.rb`, `.rake`, `.gemspec`, `Gemfile`, `Rakefile`, shell scripts (`.sh`, `.bash`, `.zsh`, `.ksh`, `.ps1`, `.envrc`, and extensionless files with a shell shebang), files that run automatically when a repository is opened, built or installed (`.vscode/tasks.json`, `devcontainer.json`, `Dockerfile`/`Containerfile`, `build.rs`, `composer.json`, Gradle and Maven builds, MSBuild project files, `//go:generate` in `.go` files), GitHub Actions workflows (`.github/workflows/*.yml`) and `action.yml` files, Markdown (`.md`, `.markdown`, `.mdx`; secret rules only), `.yaml`, `.yml`, `.toml`, `.json`, `.ini`, `.cfg`, `.env` and any `.env.*` file (such as `.env.local` or `.env.staging`), `requirements.txt`, and `package.json`. It skips hidden directories and common generated/vendor directories without descending into them. `--exclude` accepts a relative path glob and may be repeated. Files larger than 1 MiB are skipped by default; override the limit with `--max-file-size BYTES`. A file that cannot be read is skipped with a warning on standard error instead of stopping the scan.
@@ -129,6 +130,34 @@ aeppo scan . --baseline aeppo-baseline.json
 ```
 
 Findings are matched by path, rule ID, and a fingerprint of the whitespace-normalized source line, so they stay matched when surrounding lines move. Editing the flagged line or adding a new finding makes it reported again. Review the baseline file before committing it, because it records where secrets were found (but not the secret values).
+
+## Checking a repository before trying it
+
+Stars, forks and contributors do not make a repository safe to clone and run. `aeppo check` looks at a repository the way a backdoor would use it: what runs when you open it, install it, build it or run it.
+
+```bash
+aeppo check owner/repo                              # GitHub shorthand
+aeppo check https://github.com/owner/repo           # any https:// git URL (GitLab, Codeberg, ...)
+aeppo check https://github.com/owner/repo --ref v2.0
+aeppo check ./already-cloned-repo                   # a local directory, scanned in place
+aeppo check owner/repo --format json
+aeppo check owner/repo --no-osv                     # no network use besides the clone
+```
+
+1. **Safe clone.** The repository is cloned with `--depth 1` into a temporary directory that is deleted afterwards. Hooks, submodules, Git LFS, symbolic links (checked out as plain files), stored credentials, and every transport except `https` are turned off.
+2. **Scan.** All static rules run, and lockfile dependencies are looked up in OSV.dev (as with `--osv`). The repository's own `.aeppo.toml` and `aeppo: ignore` comments are ignored, because whoever wrote the repository controls them.
+3. **Report.** Findings are grouped by the moment they would run on your machine: opening the folder (VS Code tasks, dev containers, `.envrc`), installing dependencies (`package.json` scripts, `setup.py`, Composer hooks), building (`build.rs`, Gradle, Maven, MSBuild, Dockerfile, `go generate`), running its code, running its tests and examples, and its dependencies. GitHub Actions findings and committed credentials are listed separately because they put the project at risk, not you.
+4. **Verdict.**
+
+| Verdict | When | Exit code |
+|---|---|---|
+| `DANGER` | A strong sign of malicious behaviour anywhere (`MAL001`, `NET001`, `SH002`, `SH003`, `PY006`), or a high-severity finding in something that runs on open, install or build | `3` |
+| `REVIEW` | A medium- or high-severity finding in its code, install, build, open or dependency sections | `1` |
+| `NO KNOWN ISSUES` | Nothing above. Findings in tests and examples, CI workflows and committed credentials are listed but do not change the verdict | `0` |
+
+Exit code `2` means the check could not run (invalid URL, clone failed, git missing). If OSV.dev cannot be reached, the dependency section says `NOT CHECKED` and the verdict covers the other sections only.
+
+`NO KNOWN ISSUES` is not a guarantee. aeppo finds known risky patterns in text; new or obfuscated malware, a malicious dependency that no database lists yet, or harm done at run time can all be missed. Install and run code you do not trust in a disposable VM or container.
 
 ## Known-vulnerable and malicious dependencies
 

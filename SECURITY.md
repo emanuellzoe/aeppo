@@ -19,6 +19,8 @@ aeppo reads files as text and never executes, imports or installs the code it sc
 - aeppo executing, importing or evaluating anything from a scanned repository;
 - a crafted file that makes aeppo write outside its output, read files outside the scan target, or hang (for example catastrophic regex backtracking);
 - the GitHub Action exposing secrets, or running with more permissions than documented;
+- `aeppo check` running hooks, filters or other code from the cloned repository, following its symbolic links, fetching submodules or LFS objects, offering stored credentials, or leaving the clone behind;
+- a repository's `.aeppo.toml` or suppression comments changing the result of `aeppo check`;
 - `--osv` sending anything other than package ecosystems, names and versions, or making network requests without `--osv`;
 - findings or reports that leak more of a detected secret than the matched line.
 
