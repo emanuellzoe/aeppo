@@ -31,6 +31,7 @@ python -m aeppo scan .   # aeppo scans itself; .aeppo.toml excludes the corpus
 | `aeppo/rules_actions.py` | GitHub Actions workflows |
 | `aeppo/rules_autoexec.py` | Files that run on open, build or install |
 | `aeppo/lexer.py`, `aeppo/rules_code.py` | Go, Rust, Java/Kotlin, PHP and Ruby |
+| `aeppo/check.py` | `aeppo check`: hardened clone, sections and verdict |
 | `aeppo/lockfiles.py`, `aeppo/osv.py`, `aeppo/rules_vulns.py` | Lockfile parsers, the OSV.dev client and `VULN001`/`MAL001` (`--osv`) |
 
 ## Adding or changing a rule

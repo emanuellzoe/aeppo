@@ -71,10 +71,10 @@ def _is_suppressed(lines, finding):
     return any(rules is None or finding.rule_id in rules for rules in candidates)
 
 
-def _finalize(findings, lines):
+def _finalize(findings, lines, honor_suppressions=True):
     kept = []
     for finding in sorted(findings, key=lambda item: item.line):
-        if _is_suppressed(lines, finding):
+        if honor_suppressions and _is_suppressed(lines, finding):
             continue
         text = lines[finding.line - 1] if 0 < finding.line <= len(lines) else ""
         finding.fingerprint = _fingerprint(finding.rule_id, text)
@@ -110,11 +110,12 @@ def _candidate_files(target):
     return sorted(candidates)
 
 
-def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_file_size: int = _DEFAULT_MAX_FILE_SIZE, errors: Optional[List[str]] = None) -> List[Finding]:
+def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_file_size: int = _DEFAULT_MAX_FILE_SIZE, errors: Optional[List[str]] = None, honor_suppressions: bool = True) -> List[Finding]:
     """Scan supported source files and dependency manifests without executing them.
 
     When ``errors`` is a list, files that cannot be read are skipped and described there;
-    otherwise the first read error is raised.
+    otherwise the first read error is raised. ``honor_suppressions=False`` ignores
+    ``aeppo: ignore`` comments, for code whose author is not trusted.
     """
     target = Path(path)
     if max_file_size <= 0:
@@ -124,7 +125,7 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
             raise ValueError("Unsupported file type: {}".format(target.suffix or target.name))
         if target.stat().st_size > max_file_size:
             return []
-        return scan_file(target)
+        return scan_file(target, honor_suppressions)
     if not target.is_dir():
         raise ValueError("Scan target must be an existing file or directory")
 
@@ -137,7 +138,7 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
         try:
             if source.stat().st_size > max_file_size:
                 continue
-            file_findings = scan_file(source)
+            file_findings = scan_file(source, honor_suppressions)
         except OSError as error:
             if errors is None:
                 raise
@@ -149,7 +150,7 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
     return findings
 
 
-def scan_file(path: Union[str, Path]) -> List[Finding]:
+def scan_file(path: Union[str, Path], honor_suppressions: bool = True) -> List[Finding]:
     """Statically scan supported source files and dependency manifests."""
     file_path = Path(path)
     lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -157,7 +158,7 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
     suffix = file_path.suffix.lower()
     findings = rules_secrets.secret_findings(display_path, lines)
     if suffix in _DOCUMENT_EXTENSIONS:
-        return _finalize(findings, lines)
+        return _finalize(findings, lines, honor_suppressions)
     code_language = rules_code.language(file_path)
     if suffix in _SOURCE_EXTENSIONS or code_language:
         findings.extend(rules_secrets.bidi_findings(display_path, lines))
@@ -195,7 +196,7 @@ def scan_file(path: Union[str, Path]) -> List[Finding]:
             if severity:
                 finding.severity = severity
             findings.append(finding)
-    return _finalize(findings, lines)
+    return _finalize(findings, lines, honor_suppressions)
 
 
 def filter_findings(findings: Iterable[Finding], min_severity: str = "low", baseline: Optional[Set[Tuple[str, str, str]]] = None, disabled: Optional[Iterable[str]] = None) -> List[Finding]:

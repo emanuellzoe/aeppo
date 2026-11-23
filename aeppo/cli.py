@@ -92,7 +92,15 @@ def main(argv=None):
     scan_parser.add_argument("--no-config", action="store_true", help="ignore {} files".format(CONFIG_NAME))
     scan_parser.add_argument("--osv", action="store_true", help="look up lockfile dependency versions in OSV.dev for known vulnerabilities and malware (sends package names and versions)")
     scan_parser.add_argument("--skip-unsupported", action="store_true", help="skip file targets aeppo cannot scan instead of failing (used by pre-commit)")
+    check_parser = subparsers.add_parser("check", help="vet a repository before trying it: clone it safely, scan it, check its dependencies, and give a verdict")
+    check_parser.add_argument("target", metavar="REPO", help="https:// repository URL, owner/repo on GitHub, or a local directory")
+    check_parser.add_argument("--ref", help="branch or tag to check instead of the default branch")
+    check_parser.add_argument("--format", choices=["text", "json"], default="text")
+    check_parser.add_argument("--no-osv", action="store_true", help="do not look up dependencies in OSV.dev (no network use besides the clone)")
     args = parser.parse_args(argv)
+    if args.command == "check":
+        from aeppo import check
+        return check.run(args.target, ref=args.ref, use_osv=not args.no_osv, output_format=args.format)
 
     errors = []
     details = {}
