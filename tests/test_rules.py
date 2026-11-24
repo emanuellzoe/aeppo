@@ -82,6 +82,23 @@ class JavaScriptRuleTests(unittest.TestCase):
         )
         self.assertEqual(found, [(3, "JS002"), (4, "JS002")])
 
+    def test_ignores_code_inside_multiline_template_literals(self):
+        # A test that embeds Python source: exec() and eval() there are text, not calls.
+        found = scan_source(
+            "fuzz.test.ts",
+            "import { exec } from 'child_process'\n"
+            "const label = 'a ` backtick in a plain string'\n"
+            "const snippet = `\n"
+            "exec(code, namespace)\n"
+            "eval(expr)\n"
+            "`\n"
+            "exec(command)\n"
+            "const run = new Function(`\n"
+            "  return ${body}; eval(x)\n"
+            "`)\n",
+        )
+        self.assertEqual(found, [(7, "JS002"), (8, "JS003"), (9, "JS001")])
+
     def test_ignores_exec_method_definitions(self):
         found = scan_source(
             "client.ts",

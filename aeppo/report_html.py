@@ -24,10 +24,10 @@ _MASK = "[hidden by aeppo: this line was flagged as a possible credential]"
 _STYLE = """
 :root{--bg:#f7f7f5;--panel:#fff;--text:#1d1d1b;--muted:#64645f;--line:#e2e1dc;--code:#fbfbf9;
 --red:#b42318;--red-bg:#fdecea;--yellow:#8a5a00;--yellow-bg:#fff4d6;--green:#1f7a3f;--green-bg:#e6f4ea;
---gray:#8a8a85;--gray-bg:#f0f0ed;color-scheme:light}
+--gray:#8a8a85;--gray-bg:#f0f0ed;--violet:#6941c6;--violet-bg:#f1ecfd;color-scheme:light}
 @media (prefers-color-scheme:dark){:root{--bg:#161615;--panel:#1f1f1d;--text:#ececea;--muted:#a3a39e;
 --line:#34342f;--code:#1a1a18;--red:#ff8a7a;--red-bg:#3a1d19;--yellow:#f2c55c;--yellow-bg:#352b12;
---green:#7fd39a;--green-bg:#16301f;--gray:#8f8f8a;--gray-bg:#262624;color-scheme:dark}}
+--green:#7fd39a;--green-bg:#16301f;--gray:#8f8f8a;--gray-bg:#262624;--violet:#b9a2f5;--violet-bg:#2a2140;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
@@ -55,6 +55,11 @@ position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--gray)}
 .t-high>.dot,.t-high>summary>.dot{background:var(--red)}.t-medium>.dot,.t-medium>summary>.dot,.t-low>.dot,.t-low>summary>.dot{background:var(--yellow)}
 .t-clean>.dot,.t-clean>summary>.dot{background:var(--green)}
+.t-sample>.dot,.t-sample>summary>.dot{background:var(--violet)}
+.card.s-sample{border-top-color:var(--violet)}
+.b-sample{background:var(--violet-bg);color:var(--violet)}
+.file.sample{opacity:.9}.file.sample .hit-high,.file.sample .hit-medium,.file.sample .hit-low{background:var(--violet-bg)}
+.file.sample .hit-high .ln,.file.sample .hit-medium .ln,.file.sample .hit-low .ln{color:var(--violet)}
 .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin:0 0 8px}
 .file{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:0 0 14px;overflow:hidden}
 .file header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -130,8 +135,12 @@ def _anchor(index):
     return "f{}".format(index)
 
 
-def _tree(scanned, by_path, anchors):
-    """Render the file tree: every scanned file, coloured by its worst finding."""
+def _tree(scanned, by_path, anchors, samples=frozenset()):
+    """Render the file tree: every scanned file, coloured by its worst finding.
+
+    Files whose findings are all in tests and examples (``samples``) get their own colour, and
+    folders holding only those stay closed, so the code that runs on the reader stands out.
+    """
     root = {}
     for path in sorted(set(scanned) | set(by_path)):
         node = root
@@ -142,10 +151,12 @@ def _tree(scanned, by_path, anchors):
 
     def status(node):
         if isinstance(node, str):
+            if node in samples:
+                return "sample"
             worst = _worst(by_path.get(node, []))
             return worst or "clean"
         found = [status(child) for child in node.values()]
-        for level in ("high", "medium", "low"):
+        for level in ("high", "medium", "low", "sample"):
             if level in found:
                 return level
         return "clean"
@@ -162,7 +173,7 @@ def _tree(scanned, by_path, anchors):
                     label = '<a href="#{}">{}</a> <span class="muted">({})</span>'.format(anchors[child], label, count)
                 out.append('<li class="t-{}"><span class="dot"></span>{}</li>'.format(level, label))
             else:
-                opened = " open" if level != "clean" else ""
+                opened = " open" if level in {"high", "medium", "low"} else ""
                 out.append('<li><details class="t-{}"{}><summary><span class="dot"></span>{}</summary>{}</details></li>'.format(level, opened, _e(name), render(child)))
         out.append("</ul>")
         return "".join(out)
@@ -175,13 +186,13 @@ def _note(finding):
             '<p class="muted">{rec}</p></div>').format(sev=_e(finding.severity), rule=_e(finding.rule_id), msg=_e(finding.message), rec=_e(finding.recommendation))
 
 
-def _file_block(path, items, excerpt, anchor, section_label):
+def _file_block(path, items, excerpt, anchor, section_label, sample=False):
     by_line = {}
     for item in sorted(items, key=lambda item: (item.line, -SEVERITY_ORDER.get(item.severity, 1))):
         by_line.setdefault(item.line, []).append(item)
     worst = _worst(items)
-    head = '<header><span class="badge b-{w}">{w}</span><span class="mono">{p}</span><span class="muted">{n} finding(s) · {s}</span></header>'.format(
-        w=_e(worst), p=_e(path), n=len(items), s=_e(section_label))
+    head = '<header>{t}<span class="badge b-{w}">{w}</span><span class="mono">{p}</span><span class="muted">{n} finding(s) · {s}</span></header>'.format(
+        t='<span class="badge b-sample">test / sample</span>' if sample else "", w=_e(worst), p=_e(path), n=len(items), s=_e(section_label))
     rows = []
     shown = set()
     previous = None
@@ -204,7 +215,7 @@ def _file_block(path, items, excerpt, anchor, section_label):
     if rest:
         rows.append('<div class="note"><p class="muted">Line not shown:</p></div>')
         rows.extend(_note(item).replace('<div class="note">', '<div class="note"><p class="mono muted">line {}</p>'.format(item.line), 1) for item in rest)
-    return '<section class="file" id="{}">{}<div class="code">{}</div></section>'.format(anchor, head, "".join(rows))
+    return '<section class="file{}" id="{}">{}<div class="code">{}</div></section>'.format(" sample" if sample else "", anchor, head, "".join(rows))
 
 
 def _dependency_table(findings, details):
@@ -234,7 +245,9 @@ def render(source, commit, findings, level, reasons, details, osv_status, sectio
     by_path = {}
     for finding in findings:
         by_path.setdefault(finding.path, []).append(finding)
-    ordered_paths = sorted(by_path, key=lambda path: (-SEVERITY_ORDER.get(_worst(by_path[path]), 1), path))
+    samples = {path for path, items in by_path.items() if all(section_of(item) == "tests" for item in items)}
+    # Code that can reach the reader first, then tests and examples, each worst first.
+    ordered_paths = sorted(by_path, key=lambda path: (path in samples, -SEVERITY_ORDER.get(_worst(by_path[path]), 1), path))
     code_paths = [path for path in ordered_paths if any(section_of(item) != "deps" for item in by_path[path])]
     anchors = {path: _anchor(index) for index, path in enumerate(code_paths)}
     for path in ordered_paths:
@@ -257,7 +270,8 @@ def render(source, commit, findings, level, reasons, details, osv_status, sectio
             where = _e("{}:{}".format(finding.path, finding.line))
             if finding.path in anchors:
                 where = '<a href="#{}">{}</a>'.format(anchors[finding.path], where)
-            banner.append("<li><span class=\"mono\">{}</span> <code>{}</code> {}</li>".format(where, _e(finding.rule_id), _e(finding.message)))
+            tag = '<span class="badge b-sample">test / sample</span> ' if section_of(finding) == "tests" else ""
+            banner.append("<li>{}<span class=\"mono\">{}</span> <code>{}</code> {}</li>".format(tag, where, _e(finding.rule_id), _e(finding.message)))
         if len(listed) > 10:
             banner.append("<li>and {} more</li>".format(len(listed) - 10))
         if advisories:
@@ -278,23 +292,23 @@ def render(source, commit, findings, level, reasons, details, osv_status, sectio
         if key == "deps" and osv_status:
             status += " · " + osv_status
         unchecked = key == "deps" and osv_status.lower().startswith("not checked")
-        state = "s-" + worst if worst else ("s-unknown" if unchecked else "s-none")
+        state = "s-sample" if worst and key == "tests" else "s-" + worst if worst else ("s-unknown" if unchecked else "s-none")
         parts.append('<div class="card {}"><h3>{}</h3><div class="n">{}</div></div>'.format(state, _e(heading), _e(status)))
     parts.append("</div>")
 
     parts.append(_dependency_table(findings, details))
 
     parts.append("<h2>Files</h2>")
-    parts.append('<div class="legend"><span class="t-high"><span class="dot"></span>high</span><span class="t-medium"><span class="dot"></span>medium or low</span>'
+    parts.append('<div class="legend"><span class="t-high"><span class="dot"></span>high</span><span class="t-medium"><span class="dot"></span>medium or low</span><span class="t-sample"><span class="dot"></span>only in tests or examples (runs only if you run them)</span>'
                  '<span class="t-clean"><span class="dot"></span>scanned, nothing found</span><span>{} file(s) scanned · {} with findings in the code</span></div>'.format(len(scanned), len(code_paths)))
     blocks = []
     section_labels = dict((key, heading.split(" (")[0]) for key, heading, _affects in sections)
     for path in code_paths:
         items = [item for item in by_path[path] if section_of(item) != "deps"]
-        blocks.append(_file_block(path, items, excerpts.get(path, []), anchors[path], section_labels[section_of(items[0])]))
+        blocks.append(_file_block(path, items, excerpts.get(path, []), anchors[path], section_labels[section_of(items[0])], path in samples))
     if not blocks:
         blocks.append('<p class="muted">No findings in the code.</p>')
-    parts.append('<div class="layout"><nav class="tree" aria-label="Scanned files">{}</nav><div>{}</div></div>'.format(_tree(scanned, by_path, anchors), "".join(blocks)))
+    parts.append('<div class="layout"><nav class="tree" aria-label="Scanned files">{}</nav><div>{}</div></div>'.format(_tree(scanned, by_path, anchors, samples), "".join(blocks)))
 
     parts.append("<footer><p>aeppo read the files as text and ran nothing from the repository. Its rules find known risky patterns; "
                  "they can miss new or obfuscated malware, so treat a clean result as “nothing known”, not “safe”. "

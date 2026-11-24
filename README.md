@@ -152,15 +152,17 @@ aeppo check owner/repo --no-osv                     # no network use besides the
 
 | Verdict | When | Exit code |
 |---|---|---|
-| `DANGER` | A strong sign of malicious behaviour anywhere (`MAL001`, `NET001`, `SH002`, `SH003`, `PY006`), or a high-severity finding in something that runs on open, install or build | `3` |
-| `REVIEW` | A medium- or high-severity finding in its code, install, build, open or dependency sections | `1` |
-| `NO KNOWN ISSUES` | Nothing above. Findings in tests and examples, CI workflows and committed credentials are listed but do not change the verdict | `0` |
+| `DANGER` | A strong sign of malicious behaviour (`MAL001`, `NET001`, `SH002`, `SH003`, `PY006`) outside tests and examples, or a high-severity finding in something that runs on open, install or build | `3` |
+| `REVIEW` | A medium- or high-severity finding in its code, install, build, open or dependency sections, or a strong sign of malicious behaviour in its tests and examples | `1` |
+| `NO KNOWN ISSUES` | Nothing above. Other findings in tests and examples, CI workflows and committed credentials are listed but do not change the verdict | `0` |
+
+Everything under a test or example directory (`tests/`, `spec/`, `fixtures/`, `examples/`, ...) and test files such as `*_test.go` belong to the tests section, including manifests, workflows and committed credentials there (`tests/fixtures/package.json` does not run when you install the project). Vulnerable dependencies keep their own section wherever the lockfile is.
 
 Exit code `2` means the check could not run (invalid URL, clone failed, git missing). If OSV.dev cannot be reached, the dependency section says `NOT CHECKED` and the verdict covers the other sections only.
 
 ### Visual report
 
-`--format html` writes a single self-contained page: the verdict banner, a card per section coloured by its worst finding, a table of vulnerable dependencies with the upgrade that fixes them, and a tree of every scanned file (red: high, yellow: medium or low, green: scanned with nothing found). Each file with findings shows the lines around them, with the flagged lines highlighted and the explanation and recommendation underneath.
+`--format html` writes a single self-contained page: the verdict banner, a card per section coloured by its worst finding, a table of vulnerable dependencies with the upgrade that fixes them, and a tree of every scanned file (red: high, yellow: medium or low, violet: findings only in tests and examples, green: scanned with nothing found). Tests and examples are listed after the rest and their folders start closed, so the code that can run on your machine comes first. Each file with findings shows the lines around them, with the flagged lines highlighted and the explanation and recommendation underneath.
 
 The page is safe to open even when the repository is hostile: every value from the repository is HTML-escaped, the page contains no JavaScript, and its Content-Security-Policy allows nothing but its own stylesheet. Lines flagged as committed credentials are replaced with a placeholder, so the report can be shared.
 
