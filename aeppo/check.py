@@ -137,6 +137,10 @@ def section(finding):
         return "deps"
     if rule_id.startswith("SEC"):
         return "secrets"
+    # Files under test and example directories run only when the reader runs them, even when they
+    # look like a manifest or a workflow (tests/fixtures/package.json, tests/x/.github/workflows).
+    if is_test_path(finding.path):
+        return "tests"
     if rule_id.startswith("GHA") or ".github" in path.parts or name in {"action.yml", "action.yaml"}:
         return "ci"
     kind = rules_autoexec.kind(Path(finding.path))
@@ -158,6 +162,12 @@ def verdict(findings):
     for finding in findings:
         key = section(finding)
         affects_you = dict((item[0], item[2]) for item in SECTIONS)[key]
+        if key == "tests":
+            # Tests and examples run only on request, so even strong signs there call for a
+            # human (they are often detection samples, as in a scanner's own test corpus).
+            if finding.rule_id in _STRONG_RULES:
+                review.append(finding)
+            continue
         if finding.rule_id in _STRONG_RULES:
             danger.append(finding)
         elif key in _AUTOMATIC and finding.severity == "high":
@@ -245,7 +255,7 @@ def run(target, ref=None, use_osv=True, output_format="text", out=None, err=None
     try:
         local = Path(target)
         if local.is_dir():
-            root, source, commit = local, str(local), ""
+            root, source, commit = local, str(local.resolve()), ""
         else:
             url = normalize_url(target)
             workspace = Path(tempfile.mkdtemp(prefix="aeppo-check-"))
