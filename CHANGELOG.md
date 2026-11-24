@@ -4,6 +4,8 @@ All notable changes to aeppo. Versions follow [Semantic Versioning](https://semv
 
 ## Unreleased
 
+## 0.10.0 (2026-11-24)
+
 - `aeppo check --format html` writes a visual report: verdict banner, section cards, a vulnerable-dependency table, a colour-coded tree of the scanned files, and code excerpts with the flagged lines highlighted. The page has no JavaScript and a strict Content-Security-Policy, escapes everything from the repository, and masks lines flagged as credentials. `--output FILE` writes any `check` report to a file.
 
 ## 0.9.0 (2026-11-23)
