@@ -156,7 +156,7 @@ aeppo check owner/repo --no-osv                     # no network use besides the
 | `REVIEW` | A medium- or high-severity finding in its code, install, build, open or dependency sections, or a strong sign of malicious behaviour in its tests and examples | `1` |
 | `NO KNOWN ISSUES` | Nothing above. Other findings in tests and examples, CI workflows and committed credentials are listed but do not change the verdict | `0` |
 
-Everything under a test or example directory (`tests/`, `spec/`, `fixtures/`, `examples/`, ...) and test files such as `*_test.go` belong to the tests section, including manifests and workflows there (`tests/fixtures/package.json` does not run when you install the project). Vulnerable dependencies keep their own section wherever the lockfile is.
+Everything under a test or example directory (`tests/`, `spec/`, `fixtures/`, `examples/`, ...) and test files such as `*_test.go` belong to the tests section, including manifests, workflows and committed credentials there (`tests/fixtures/package.json` does not run when you install the project). Vulnerable dependencies keep their own section wherever the lockfile is.
 
 Exit code `2` means the check could not run (invalid URL, clone failed, git missing). If OSV.dev cannot be reached, the dependency section says `NOT CHECKED` and the verdict covers the other sections only.
 

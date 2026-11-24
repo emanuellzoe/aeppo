@@ -36,6 +36,46 @@ _JS_FUNCTION_METHOD = re.compile(r"(?<![\w$.])(?:async\s+)?Function\s*\([^)]*\)\
 _JS_EXTENSIONS = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 
 
+def _template_text_lines(lines):
+    """Return 1-based numbers of lines that lie wholly inside a multi-line template literal.
+
+    Such lines are string content (often code in another language, as in a test that embeds a
+    Python snippet), not calls. A line that opens or closes the literal, or has a ``${``
+    substitution, is still scanned. Quotes, escapes and comments are tracked so a backtick inside
+    an ordinary string does not flip the state.
+    """
+    inside = set()
+    state = None  # None (code), "`", "'", '"', "/*"
+    for number, line in enumerate(lines, start=1):
+        if state == "`" and "`" not in line and "${" not in line:
+            inside.add(number)
+            continue
+        index = 0
+        while index < len(line):
+            char = line[index]
+            if state is None:
+                if line.startswith("//", index):
+                    break
+                if line.startswith("/*", index):
+                    state, index = "/*", index + 2
+                    continue
+                if char in "`'\"":
+                    state = char
+            elif state == "/*":
+                if line.startswith("*/", index):
+                    state, index = None, index + 2
+                    continue
+            elif char == "\\":
+                index += 2
+                continue
+            elif char == state:
+                state = None
+            index += 1
+        if state in {"'", '"'}:
+            state = None  # an unterminated ordinary string ends with the line
+    return inside
+
+
 def scan(path, lines):
     source = "\n".join(lines)
     has_eval, has_exec = "eval" in source, "exec" in source
@@ -55,7 +95,10 @@ def scan(path, lines):
             pattern += "|" + _JS_BARE_EXEC
         exec_pattern = re.compile(pattern)
     findings = []
+    template_lines = _template_text_lines(lines) if "`" in source else ()
     for line_number, line in enumerate(lines, start=1):
+        if line_number in template_lines:
+            continue
         # Substring checks are far cheaper than regex searches and skip almost every line.
         line_eval = has_eval and "eval" in line
         line_exec = has_exec and "exec" in line

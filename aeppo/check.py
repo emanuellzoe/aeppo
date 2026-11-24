@@ -135,12 +135,14 @@ def section(finding):
     name = path.name
     if rule_id in {"VULN001", "MAL001"}:
         return "deps"
-    if rule_id.startswith("SEC"):
-        return "secrets"
     # Files under test and example directories run only when the reader runs them, even when they
     # look like a manifest or a workflow (tests/fixtures/package.json, tests/x/.github/workflows).
+    # Credentials there are usually fixtures (a secret scanner's tests are full of fake keys); they
+    # stay masked and listed with the tests.
     if is_test_path(finding.path):
         return "tests"
+    if rule_id.startswith("SEC"):
+        return "secrets"
     if rule_id.startswith("GHA") or ".github" in path.parts or name in {"action.yml", "action.yaml"}:
         return "ci"
     kind = rules_autoexec.kind(Path(finding.path))

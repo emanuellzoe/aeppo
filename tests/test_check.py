@@ -73,6 +73,7 @@ class SectionTests(unittest.TestCase):
             ("tests/corpus/.github/workflows/x.yml", "GHA002", None, "tests"),
             ("examples/app/.vscode/tasks.json", "AUTO001", None, "tests"),
             ("examples/app/uv.lock", "VULN001", None, "deps"),
+            ("pkg/detectors/aws/aws_test.go", "SEC001", None, "tests"),
             ("uv.lock", "VULN001", None, "deps"),
             (".github/workflows/ci.yml", "GHA003", None, "ci"),
             ("config.py", "SEC001", None, "secrets"),

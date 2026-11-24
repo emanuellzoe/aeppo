@@ -6,6 +6,8 @@ All notable changes to aeppo. Versions follow [Semantic Versioning](https://semv
 
 - `aeppo check`: findings under test and example directories, including manifests and workflows there, belong to the tests section; strong signs of malice there make the verdict `REVIEW` instead of `DANGER` (a scanner's own detection samples no longer make it look dangerous). The HTML report shows them in violet, after the rest, with their folders closed.
 - `aeppo check DIR` names the directory by its full path.
+- `aeppo check`: committed credentials in test files and fixtures (a secret scanner's tests are full of fake keys) are listed with the tests; they stay masked in the HTML report.
+- JS001-JS003 skip lines that lie wholly inside a multi-line template literal, so code in another language embedded in a test (for example Python's `exec(code, namespace)`) is no longer reported.
 
 ## 0.10.0 (2026-11-24)
 
