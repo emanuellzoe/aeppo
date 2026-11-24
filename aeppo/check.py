@@ -19,9 +19,9 @@ import tempfile
 import urllib.parse
 from pathlib import Path, PurePosixPath
 
-from aeppo import osv, rules_autoexec, rules_vulns
+from aeppo import osv, report_html, rules_autoexec, rules_vulns
 from aeppo.findings import SEVERITY_ORDER
-from aeppo.scanner import scan_path
+from aeppo.scanner import _candidate_files, scan_path
 
 
 CLONE_TIMEOUT = 600
@@ -232,10 +232,11 @@ def format_json(source, commit, findings, level, reasons):
 EXIT_CODES = {"clear": 0, "review": 1, "danger": 3}
 
 
-def run(target, ref=None, use_osv=True, output_format="text", out=None, err=None, client=None, max_file_size=1024 * 1024):
+def run(target, ref=None, use_osv=True, output_format="text", out=None, err=None, client=None, max_file_size=1024 * 1024, output=None):
     """Check ``target`` (a URL, ``owner/repo``, or a local directory) and print a report.
 
-    Returns the exit code: 0 no known issues, 1 review, 3 danger, 2 error.
+    ``output_format`` is text, json or html; ``output`` is a path to write the report to instead
+    of ``out``. Returns the exit code: 0 no known issues, 1 review, 3 danger, 2 error.
     """
     import sys
     out = out or sys.stdout
@@ -268,9 +269,19 @@ def run(target, ref=None, use_osv=True, output_format="text", out=None, err=None
             print("aeppo: warning: skipped {}".format(message), file=err)
         level, reasons = verdict(findings)
         if output_format == "json":
-            print(format_json(source, commit, findings, level, reasons), file=out)
+            report = format_json(source, commit, findings, level, reasons)
+        elif output_format == "html":
+            # Excerpts are read now, while the checked-out copy still exists.
+            scanned = [path.relative_to(root).as_posix() for path in _candidate_files(root)]
+            report = report_html.render(source, commit, findings, level, reasons, details, osv_status, SECTIONS, section,
+                                        _VERDICT_TEXT[level], scanned, report_html.read_excerpts(root, findings)).rstrip("\n")
         else:
-            print(format_text(source, commit, findings, level, reasons, details, osv_status), file=out)
+            report = format_text(source, commit, findings, level, reasons, details, osv_status)
+        if output is not None:
+            Path(output).write_text(report + "\n", encoding="utf-8")
+            print("aeppo: wrote the {} report to {} (verdict: {})".format(output_format, output, level), file=err)
+        else:
+            print(report, file=out)
         return EXIT_CODES[level]
     except (CheckError, OSError) as error:
         print("aeppo: {}".format(error), file=err)

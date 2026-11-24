@@ -151,8 +151,12 @@ def findings_for(entries, results, details=None):
 _LABEL_ORDER = ("malicious", "critical", "high", "medium", None, "low", "informational")
 
 
-def summary(findings, details):
-    """Return text lines summarising VULN001/MAL001 findings per package version, worst first."""
+def package_rows(findings, details):
+    """Group VULN001/MAL001 findings per package version, worst first.
+
+    Each row is a dict with ecosystem, name, version, advisories (``Detail`` list), counts
+    (e.g. "2 high, 1 medium"), action (what to do), malware (bool) and locations ("path:line").
+    """
     packages = {}
     for finding in findings:
         detail = details.get(id(finding))
@@ -164,14 +168,12 @@ def summary(findings, details):
         location = "{}:{}".format(finding.path, finding.line)
         if location not in entry["locations"]:
             entry["locations"].append(location)
-    if not packages:
-        return []
 
     def rank(item):
         labels = [detail.label for detail in item[1]["advisories"].values()]
         return (min(_LABEL_ORDER.index(label) for label in labels), -len(labels), item[0])
 
-    lines = ["", "Dependency summary ({} package version(s) with advisories):".format(len(packages))]
+    rows = []
     for (ecosystem, name, version), entry in sorted(packages.items(), key=rank):
         advisories = list(entry["advisories"].values())
         counts = []
@@ -179,8 +181,8 @@ def summary(findings, details):
             count = sum(1 for detail in advisories if detail.label == label)
             if count:
                 counts.append("{} {}".format(count, label or "unrated"))
-        noun = "advisory" if len(advisories) == 1 else "advisories"
-        if any(detail.malware for detail in advisories):
+        malware = any(detail.malware for detail in advisories)
+        if malware:
             action = "MALICIOUS: remove it and treat machines that installed it as compromised"
         else:
             target_version = upgrade_target(detail.fix for detail in advisories)
@@ -191,9 +193,22 @@ def summary(findings, details):
                     action += " ({} without a fix)".format(unfixed)
             else:
                 action = "no fixed version listed"
-        lines.append("  {} {} ({}): {} {} ({}) -> {}".format(name, version, ecosystem, len(advisories), noun, ", ".join(counts), action))
-        shown = entry["locations"][:3]
-        more = len(entry["locations"]) - len(shown)
+        rows.append({"ecosystem": ecosystem, "name": name, "version": version, "advisories": advisories,
+                     "counts": ", ".join(counts), "action": action, "malware": malware, "locations": entry["locations"]})
+    return rows
+
+
+def summary(findings, details):
+    """Return text lines summarising VULN001/MAL001 findings per package version, worst first."""
+    rows = package_rows(findings, details)
+    if not rows:
+        return []
+    lines = ["", "Dependency summary ({} package version(s) with advisories):".format(len(rows))]
+    for row in rows:
+        noun = "advisory" if len(row["advisories"]) == 1 else "advisories"
+        lines.append("  {} {} ({}): {} {} ({}) -> {}".format(row["name"], row["version"], row["ecosystem"], len(row["advisories"]), noun, row["counts"], row["action"]))
+        shown = row["locations"][:3]
+        more = len(row["locations"]) - len(shown)
         lines.append("      " + ", ".join(shown) + (" and {} more".format(more) if more else ""))
     return lines
 

@@ -141,6 +141,7 @@ aeppo check https://github.com/owner/repo           # any https:// git URL (GitL
 aeppo check https://github.com/owner/repo --ref v2.0
 aeppo check ./already-cloned-repo                   # a local directory, scanned in place
 aeppo check owner/repo --format json
+aeppo check owner/repo --format html --output report.html   # visual report, open it in a browser
 aeppo check owner/repo --no-osv                     # no network use besides the clone
 ```
 
@@ -156,6 +157,12 @@ aeppo check owner/repo --no-osv                     # no network use besides the
 | `NO KNOWN ISSUES` | Nothing above. Findings in tests and examples, CI workflows and committed credentials are listed but do not change the verdict | `0` |
 
 Exit code `2` means the check could not run (invalid URL, clone failed, git missing). If OSV.dev cannot be reached, the dependency section says `NOT CHECKED` and the verdict covers the other sections only.
+
+### Visual report
+
+`--format html` writes a single self-contained page: the verdict banner, a card per section coloured by its worst finding, a table of vulnerable dependencies with the upgrade that fixes them, and a tree of every scanned file (red: high, yellow: medium or low, green: scanned with nothing found). Each file with findings shows the lines around them, with the flagged lines highlighted and the explanation and recommendation underneath.
+
+The page is safe to open even when the repository is hostile: every value from the repository is HTML-escaped, the page contains no JavaScript, and its Content-Security-Policy allows nothing but its own stylesheet. Lines flagged as committed credentials are replaced with a placeholder, so the report can be shared.
 
 `NO KNOWN ISSUES` is not a guarantee. aeppo finds known risky patterns in text; new or obfuscated malware, a malicious dependency that no database lists yet, or harm done at run time can all be missed. Install and run code you do not trust in a disposable VM or container.
 
