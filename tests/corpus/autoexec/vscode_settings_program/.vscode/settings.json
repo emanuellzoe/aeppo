@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/tools/python",
+  "terminal.integrated.env.osx": {
+    "NODE_OPTIONS": "--require ./x.js"
+  },
+  "editor.tabSize": 2
+}

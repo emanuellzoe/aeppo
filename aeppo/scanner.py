@@ -26,7 +26,9 @@ _SOURCE_EXTENSIONS = {".py"} | _JS_EXTENSIONS
 # matched by name in ``_supported``.
 _CONFIG_EXTENSIONS = {".yaml", ".yml", ".toml", ".json", ".ini", ".cfg", ".env"}
 _MANIFEST_NAMES = {"requirements.txt", "package.json"}
-_ENTERED_HIDDEN_DIRECTORIES = {".github", ".vscode", ".devcontainer"}
+_ENTERED_HIDDEN_DIRECTORIES = {".github", ".vscode", ".devcontainer", ".cargo", ".mvn"}
+# Files read inside the hidden directories above (other than .github).
+_HIDDEN_DIRECTORY_KINDS = {"vscode_tasks", "vscode_settings", "devcontainer", "cargo_config", "build_wrapper"}
 _IGNORED_DIRECTORIES = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules"}
 _DEFAULT_MAX_FILE_SIZE = 1024 * 1024
 
@@ -86,7 +88,8 @@ def _candidate_files(target):
     """Return supported files in sorted order, pruning hidden and vendor directories before descending.
 
     Hidden directories entered: ``.github`` (only ``workflows/*.yml|yaml``), ``.vscode`` (only
-    ``tasks.json``) and ``.devcontainer`` (only ``devcontainer.json`` files).
+    ``tasks.json`` and ``settings.json``), ``.devcontainer`` (only ``devcontainer.json`` files),
+    ``.cargo`` (only ``config.toml``) and ``.mvn`` (only ``wrapper/maven-wrapper.properties``).
     """
     candidates = []
     for directory, subdirectories, files in os.walk(target):
@@ -98,9 +101,9 @@ def _candidate_files(target):
                 candidates.extend(Path(directory, name) for name in files if Path(name).suffix.lower() in {".yml", ".yaml"} and Path(directory, name).is_file())
             continue
         if hidden_root:
-            # .vscode: tasks.json only. .devcontainer: devcontainer.json, including named sub-configs.
-            subdirectories[:] = [] if hidden_root == ".vscode" else [name for name in subdirectories if not name.startswith(".")]
-            candidates.extend(Path(directory, name) for name in files if rules_autoexec.kind(Path(directory, name)) in {"vscode_tasks", "devcontainer"} and Path(directory, name).is_file())
+            # .vscode and .cargo: top level only. .devcontainer: named sub-configs. .mvn: wrapper/.
+            subdirectories[:] = [] if hidden_root in {".vscode", ".cargo"} else [name for name in subdirectories if not name.startswith(".")]
+            candidates.extend(Path(directory, name) for name in files if rules_autoexec.kind(Path(directory, name)) in _HIDDEN_DIRECTORY_KINDS and Path(directory, name).is_file())
             continue
         subdirectories[:] = [name for name in subdirectories if name in _ENTERED_HIDDEN_DIRECTORIES or (not name.startswith(".") and name not in _IGNORED_DIRECTORIES)]
         for name in files:
@@ -171,7 +174,7 @@ def scan_file(path: Union[str, Path], honor_suppressions: bool = True) -> List[F
     elif suffix in _JS_EXTENSIONS:
         findings.extend(rules_js.scan(display_path, lines))
     elif rules_autoexec.kind(file_path):
-        for line_number, rule_id, severity, message in rules_autoexec.scan(rules_autoexec.kind(file_path), lines):
+        for line_number, rule_id, severity, message in rules_autoexec.scan(rules_autoexec.kind(file_path), lines, file_path):
             finding = _finding(display_path, line_number, rule_id, message)
             if severity:
                 finding.severity = severity
