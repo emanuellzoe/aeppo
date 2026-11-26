@@ -1,0 +1,7 @@
+[build-system]
+requires = []
+build-backend = "backend"
+backend-path = ["_custom_build"]
+
+[project]
+name = "demo"

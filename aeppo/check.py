@@ -146,13 +146,13 @@ def section(finding):
     if rule_id.startswith("GHA") or ".github" in path.parts or name in {"action.yml", "action.yaml"}:
         return "ci"
     kind = rules_autoexec.kind(Path(finding.path))
-    if rule_id.startswith("AUTO") or kind in {"vscode_tasks", "devcontainer"} or name == ".envrc":
+    if rule_id.startswith("AUTO") or kind in {"vscode_tasks", "vscode_settings", "devcontainer"} or name == ".envrc":
         return "open"
-    if rule_id.startswith("DEP") or kind == "composer" or name in _INSTALL_NAMES or name.endswith(".gemspec") or name.startswith("requirements"):
+    if rule_id.startswith("DEP") or kind in {"composer", "yarnrc", "npmrc", "pyproject", "pth"} or name in _INSTALL_NAMES or name.endswith(".gemspec") or name.startswith("requirements"):
         return "install"
     # In .go files, shell rules with the plain "Shell script" message come from //go:generate lines;
     # commands passed to exec.Command are reported as "Embedded shell command".
-    if rule_id.startswith("BLD") or kind in {"build_rs", "gradle", "maven", "msbuild", "dockerfile"} or (kind == "go" and rule_id.startswith("SH") and finding.message.startswith("Shell script")):
+    if rule_id.startswith("BLD") or kind in {"build_rs", "gradle", "maven", "msbuild", "dockerfile", "cargo_config", "build_wrapper", "makefile"} or (kind == "go" and rule_id.startswith("SH") and finding.message.startswith("Shell script")):
         return "build"
     return "tests" if is_test_path(finding.path) else "run"
 

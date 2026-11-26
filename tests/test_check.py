@@ -75,6 +75,15 @@ class SectionTests(unittest.TestCase):
             ("examples/app/uv.lock", "VULN001", None, "deps"),
             ("pkg/detectors/aws/aws_test.go", "SEC001", None, "tests"),
             ("uv.lock", "VULN001", None, "deps"),
+            (".vscode/settings.json", "AUTO003", None, "open"),
+            (".yarnrc.yml", "DEP005", None, "install"),
+            (".npmrc", "DEP005", None, "install"),
+            ("pyproject.toml", "DEP006", None, "install"),
+            ("lib/demo.pth", "DEP007", None, "install"),
+            (".cargo/config.toml", "BLD003", None, "build"),
+            ("gradle/wrapper/gradle-wrapper.properties", "BLD004", None, "build"),
+            ("Makefile", "SH001", None, "build"),
+            ("build/common.mk", "SH001", None, "build"),
             (".github/workflows/ci.yml", "GHA003", None, "ci"),
             ("config.py", "SEC001", None, "secrets"),
         ]
@@ -93,6 +102,8 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(check.verdict([finding("tests/fixtures/package.json", "DEP004")])[0], "clear")
         self.assertEqual(check.verdict([finding("package.json", "DEP004")])[0], "danger")
         self.assertEqual(check.verdict([finding("package.json", "DEP003")])[0], "review")
+        self.assertEqual(check.verdict([finding(".yarnrc.yml", "DEP005")])[0], "danger")
+        self.assertEqual(check.verdict([finding(".cargo/config.toml", "BLD003", "low")])[0], "clear")
         self.assertEqual(check.verdict([finding("uv.lock", "MAL001")])[0], "danger")
         self.assertEqual(check.verdict([finding(".github/workflows/ci.yml", "GHA002")])[0], "clear")
         self.assertEqual(check.verdict([finding("config.py", "SEC001")])[0], "clear")

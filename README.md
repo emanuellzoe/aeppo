@@ -319,6 +319,14 @@ A backdoor in a cloned repository usually sits where a tool runs code without be
 | `BLD001` | Build script starts a shell or download tool: `build.rs` `Command::new("sh"/"curl"…)` (medium), Gradle `commandLine`/`exec {}`/`.execute()` (low), `exec-maven-plugin` running a shell (medium) | `build.rs` runs on every build and when rust-analyzer opens the project; Gradle runs on IDE import. `Command::new("git")` is not reported |
 | `BLD002` | Build script uses the network: `build.rs` with `reqwest`/`ureq`/`TcpStream` (high), Gradle `URL(...).readText()` (high), MSBuild `<DownloadFile>` (medium) | |
 | `DEP003` / `DEP004` | Composer install hooks (`post-install-cmd`, `post-autoload-dump`, …); `DEP004` when one pipes a download into an interpreter | Composer hooks are routine in frameworks, so `DEP003` is low for Composer |
+| `AUTO003` | `.vscode/settings.json` that points a tool (`python.defaultInterpreterPath`, `*.executablePath`, `*.serverPath`, terminal profiles, …) at a program **committed to the repository**, or sets `NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, `BASH_ENV`, `PYTHONSTARTUP` and similar for terminals | VS Code and its extensions start these tools when the folder opens; a local `.venv` interpreter that is not committed is not reported |
+| `BLD003` | `.cargo/config.toml` `rustc-wrapper`, `rustc`, `rustdoc` (high for a program in the repository, low for a named tool such as `sccache`), `linker` in the repository (high), `runner` in the repository (medium) | Wrappers run on every build and when rust-analyzer opens the project |
+| `BLD004` | `gradle-wrapper.properties` or `.mvn/wrapper/maven-wrapper.properties` downloading the distribution or wrapper jar from anywhere but `services.gradle.org` / `repo.maven.apache.org` | `./gradlew` and IDE import run what it downloads |
+| `DEP005` | `.yarnrc.yml` / `.yarnrc` `yarnPath` outside `.yarn/releases/yarn-*.cjs` (high; low for the usual committed release), Yarn plugins outside `@yarnpkg` (medium), `.npmrc` `node-options` with `--require`/`--import` (high), `onload-script` (high), `script-shell` or `git` pointing into the repository (high; low for a named program) | Runs on every `yarn` or `npm` command in the folder |
+| `DEP006` | `pyproject.toml` `[build-system] backend-path` | The in-tree build backend runs on `pip install .` (setuptools itself does this legitimately) |
+| `DEP007` | `.pth` file line starting with `import` | Once installed, it runs on every Python start |
+
+`Makefile`, `GNUmakefile`, `*.mk` and `justfile` recipes are checked with the shell rules (`make` runs them).
 
 `SH001` also covers PowerShell download cradles (`iwr … | iex`, `IEX (… DownloadString(…))`), and `SH003` covers `powershell -EncodedCommand`. `.envrc` is scanned as a shell script because direnv runs it on `cd`.
 

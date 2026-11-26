@@ -1,0 +1,5 @@
+[build]
+rustc-wrapper = "tools/wrap.sh"
+
+[target.x86_64-unknown-linux-gnu]
+runner = "./tools/run.sh"
