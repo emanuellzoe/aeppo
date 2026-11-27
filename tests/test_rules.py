@@ -148,6 +148,56 @@ class SecretRuleTests(unittest.TestCase):
         self.assertEqual(scan_source("fixtures.py", text), [])
 
 
+def _pe_header():
+    header = bytearray(128)
+    header[:2] = b"MZ"
+    header[60:64] = (64).to_bytes(4, "little")
+    header[64:68] = b"PE\0\0"
+    return bytes(header)
+
+
+class BinaryTests(unittest.TestCase):
+    """Header bytes only, written into a temporary directory: nothing here can run."""
+
+    def scan_tree(self, files, **options):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, data in files.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_bytes(data)
+            return sorted((finding.path, finding.rule_id, finding.message.split(" executable")[0]) for finding in scan_path(root, **options))
+
+    def test_reports_executables_by_header(self):
+        found = self.scan_tree({
+            "bin/tool": b"\x7fELF\x02\x01\x01" + bytes(64),
+            "lib/addon.node": b"\xcf\xfa\xed\xfe" + bytes(64),
+            "lib/universal.dylib": b"\xca\xfe\xba\xbe\x00\x00\x00\x02" + bytes(64),
+            "win/setup.exe": _pe_header(),
+            "lib/libz.so.1": b"\x7fELF" + bytes(64),
+        })
+        self.assertEqual(found, [
+            ("bin/tool", "BIN001", "Committed ELF"),
+            ("lib/addon.node", "BIN001", "Committed Mach-O"),
+            ("lib/libz.so.1", "BIN001", "Committed ELF"),
+            ("lib/universal.dylib", "BIN001", "Committed Mach-O"),
+            ("win/setup.exe", "BIN001", "Committed PE"),
+        ])
+
+    def test_ignores_class_files_text_and_other_binaries(self):
+        found = self.scan_tree({
+            "Main.class": b"\xca\xfe\xba\xbe\x00\x00\x00\x41" + bytes(64),
+            "NOTES": b"MZ is not always an executable\n",
+            "fake.exe": b"MZ" + bytes(126),
+            "logo.png": b"\x89PNG\r\n\x1a\n" + bytes(64),
+            "gradle/wrapper/gradle-wrapper.jar": b"PK\x03\x04" + bytes(64),
+        })
+        self.assertEqual(found, [])
+
+    def test_large_binaries_are_still_reported(self):
+        found = self.scan_tree({"bin/big": b"\x7fELF" + bytes(4096)}, max_file_size=100)
+        self.assertEqual([item[:2] for item in found], [("bin/big", "BIN001")])
+
+
 class SuppressionTests(unittest.TestCase):
     def test_inline_and_next_line_suppression(self):
         call = "os." + "system(command)"

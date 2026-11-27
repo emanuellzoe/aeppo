@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Iterable, List, Optional, Set, Tuple, Union
 
-from aeppo import rules_actions, rules_autoexec, rules_code, rules_deps, rules_js, rules_python, rules_secrets, rules_shell
+from aeppo import rules_actions, rules_autoexec, rules_code, rules_deps, rules_js, rules_opaque, rules_python, rules_secrets, rules_shell
 from aeppo.findings import RULES, SEVERITY_ORDER, Finding, Rule, make_finding as _finding  # noqa: F401
 from aeppo.rules_js import _JS_EXTENSIONS
 
@@ -44,6 +44,17 @@ def _supported(path):
         or rules_autoexec.kind(path) is not None
         or rules_code.language(path) is not None
     )
+
+
+def _binary_format(path):
+    """Return the executable format of ``path`` ("ELF", "Mach-O", "PE") from its header, or None."""
+    if not rules_opaque.might_be_binary(path):
+        return None
+    try:
+        with open(str(path), "rb") as handle:
+            return rules_opaque.executable_format(handle.read(rules_opaque.HEADER_BYTES))
+    except OSError:
+        return None
 
 
 def _fingerprint(rule_id, line_text):
@@ -108,7 +119,7 @@ def _candidate_files(target):
         subdirectories[:] = [name for name in subdirectories if name in _ENTERED_HIDDEN_DIRECTORIES or (not name.startswith(".") and name not in _IGNORED_DIRECTORIES)]
         for name in files:
             path = Path(directory, name)
-            if _supported(path) and path.is_file():
+            if path.is_file() and (_supported(path) or _binary_format(path)):
                 candidates.append(path)
     return sorted(candidates)
 
@@ -124,9 +135,9 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
     if max_file_size <= 0:
         raise ValueError("max_file_size must be greater than zero")
     if target.is_file():
-        if not _supported(target):
+        if not _supported(target) and not _binary_format(target):
             raise ValueError("Unsupported file type: {}".format(target.suffix or target.name))
-        if target.stat().st_size > max_file_size:
+        if target.stat().st_size > max_file_size and not _binary_format(target):
             return []
         return scan_file(target, honor_suppressions)
     if not target.is_dir():
@@ -139,7 +150,8 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
         if any(fnmatch.fnmatch(relative_name, pattern) for pattern in excludes):
             continue
         try:
-            if source.stat().st_size > max_file_size:
+            # Binaries are reported from their header, whatever their size.
+            if source.stat().st_size > max_file_size and not _binary_format(source):
                 continue
             file_findings = scan_file(source, honor_suppressions)
         except OSError as error:
@@ -156,6 +168,10 @@ def scan_path(path: Union[str, Path], excludes: Optional[List[str]] = None, max_
 def scan_file(path: Union[str, Path], honor_suppressions: bool = True) -> List[Finding]:
     """Statically scan supported source files and dependency manifests."""
     file_path = Path(path)
+    binary = _binary_format(file_path)
+    if binary:
+        finding = _finding(str(file_path), 1, "BIN001", "Committed {} executable or shared library; its code cannot be reviewed from the repository.".format(binary))
+        return _finalize([finding], [], honor_suppressions)
     lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
     display_path = str(file_path)
     suffix = file_path.suffix.lower()
@@ -163,8 +179,18 @@ def scan_file(path: Union[str, Path], honor_suppressions: bool = True) -> List[F
     if suffix in _DOCUMENT_EXTENSIONS:
         return _finalize(findings, lines, honor_suppressions)
     code_language = rules_code.language(file_path)
-    if suffix in _SOURCE_EXTENSIONS or code_language:
-        findings.extend(rules_secrets.bidi_findings(display_path, lines))
+    is_shell = suffix in rules_shell.SHELL_EXTENSIONS or file_path.name in rules_shell.SHELL_NAMES or (not suffix and bool(lines) and rules_shell.has_shell_shebang(lines[0]))
+    if suffix in _SOURCE_EXTENSIONS or code_language or is_shell:
+        if suffix in _SOURCE_EXTENSIONS or code_language:
+            findings.extend(rules_secrets.bidi_findings(display_path, lines))
+        opaque = rules_opaque.blob_findings(lines)
+        opaque += rules_opaque.packed_findings(lines, "js" if suffix in _JS_EXTENSIONS else "other", {line for line, *_ in opaque})
+        opaque += rules_opaque.homoglyph_findings(lines)
+        for line_number, rule_id, severity, message in opaque:
+            finding = _finding(display_path, line_number, rule_id, message)
+            if severity:
+                finding.severity = severity
+            findings.append(finding)
     if file_path.name == "requirements.txt":
         findings.extend(rules_deps.scan_requirements(display_path, lines))
     elif file_path.name == "package.json":

@@ -83,6 +83,10 @@ RULES = {
     "NET001": Rule("Program connects to the network and hands the connection to a shell (reverse-shell pattern).", "high", "medium", "backdoor", "Remove it unless the program is an intended remote-access tool."),
     "VULN001": Rule("Dependency version has a known vulnerability.", "medium", "high", "vulnerable-dependency", "Upgrade to a fixed version and regenerate the lockfile."),
     "MAL001": Rule("Dependency version is listed as a malicious package.", "high", "high", "malware", "Do not install it; if it was installed, treat the machine and its credentials as compromised."),
+    "BIN001": Rule("Committed executable or shared library; its code cannot be reviewed from the repository.", "medium", "high", "opaque-content", "Build it from source yourself, or check that it matches a signed upstream release before running or loading it."),
+    "OBF001": Rule("Large encoded blob (base64 or hex) in source code.", "low", "medium", "obfuscation", "Decode the blob and check what it contains; payloads are often hidden this way."),
+    "OBF002": Rule("Minified or packed code in a source file.", "medium", "medium", "obfuscation", "Read the unminified source, or format the file and review it before running it."),
+    "SRC002": Rule("Identifier mixes Latin letters with lookalike Cyrillic or Greek letters (homoglyph).", "medium", "medium", "obfuscation", "Replace the lookalike letters; a homoglyph name can shadow a trusted function or package."),
     "SRC001": Rule("Bidirectional Unicode control character can make code render differently from how it runs (Trojan Source).", "high", "medium", "obfuscation", "Remove the control character, or confirm it only appears inside an intended string literal."),
 }
 

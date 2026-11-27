@@ -2,6 +2,10 @@
 
 All notable changes to aeppo. Versions follow [Semantic Versioning](https://semver.org/); while the version is below 1.0, a minor release can add rules that report new findings on code that was clean before.
 
+## Unreleased
+
+- New rules for content a reviewer cannot read: `BIN001` (committed ELF, Mach-O or PE executables and shared libraries, found by their header bytes whatever their size), `OBF001` (large base64 or hex blobs in source, `high` when the file also decodes and runs code), `OBF002` (minified or packed source lines) and `SRC002` (words mixing Latin letters with lookalike Cyrillic or Greek letters). In `aeppo check`, a binary outside tests and examples makes the verdict `REVIEW`.
+
 ## 0.12.0 (2026-11-26)
 
 - New auto-run rules for config files that make a tool run a program from the repository: `AUTO003` (`.vscode/settings.json` pointing at a committed program, or `NODE_OPTIONS`/`LD_PRELOAD`-style terminal variables), `BLD003` (`.cargo/config.toml` rustc wrappers, linker and runner), `BLD004` (Gradle and Maven wrappers downloading from unofficial hosts), `DEP005` (`yarnPath`, Yarn plugins, `.npmrc` `node-options`/`onload-script`/`script-shell`), `DEP006` (in-tree Python build backend) and `DEP007` (`.pth` import lines). `.cargo` and `.mvn` are now entered, and Makefiles and justfiles are checked with the shell rules. `aeppo check` files them under opening, installing or building.

@@ -30,6 +30,7 @@ python -m aeppo scan .   # aeppo scans itself; .aeppo.toml excludes the corpus
 | `aeppo/rules_shell.py` | Shell scripts; also used for commands embedded in other files |
 | `aeppo/rules_actions.py` | GitHub Actions workflows |
 | `aeppo/rules_autoexec.py` | Files that run on open, build or install |
+| `aeppo/rules_opaque.py` | Binaries, encoded blobs, minified code and homoglyphs |
 | `aeppo/lexer.py`, `aeppo/rules_code.py` | Go, Rust, Java/Kotlin, PHP and Ruby |
 | `aeppo/check.py` | `aeppo check`: hardened clone, sections and verdict |
 | `aeppo/report_html.py` | `aeppo check --format html` (no JavaScript, strict CSP, everything escaped) |
