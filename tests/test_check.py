@@ -86,6 +86,9 @@ class SectionTests(unittest.TestCase):
             ("build/common.mk", "SH001", None, "build"),
             (".github/workflows/ci.yml", "GHA003", None, "ci"),
             ("config.py", "SEC001", None, "secrets"),
+            ("bin/tool", "BIN001", None, "run"),
+            ("tests/data/sample.exe", "BIN001", None, "tests"),
+            ("src/app.js", "OBF001", None, "run"),
         ]
         for path, rule_id, message, expected in cases:
             self.assertEqual(check.section(finding(path, rule_id, message=message)), expected, path)
@@ -108,6 +111,9 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(check.verdict([finding(".github/workflows/ci.yml", "GHA002")])[0], "clear")
         self.assertEqual(check.verdict([finding("config.py", "SEC001")])[0], "clear")
         self.assertEqual(check.verdict([finding("src/app.py", "PY001", "low")])[0], "clear")
+        self.assertEqual(check.verdict([finding("bin/tool", "BIN001")])[0], "review")
+        self.assertEqual(check.verdict([finding("tests/data/sample.exe", "BIN001")])[0], "clear")
+        self.assertEqual(check.verdict([finding("vendor/icons.js", "OBF001")])[0], "clear")
 
 
 class RunTests(unittest.TestCase):

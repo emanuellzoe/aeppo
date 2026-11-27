@@ -116,6 +116,8 @@ def read_excerpts(root, findings, context=CONTEXT_LINES):
         by_path.setdefault(finding.path, []).append(finding)
     excerpts = {}
     for path, items in by_path.items():
+        if all(item.rule_id == "BIN001" for item in items):
+            continue  # a binary has no lines to show
         try:
             with open(str(root / path), "rb") as handle:
                 data = handle.read(MAX_READ_BYTES)

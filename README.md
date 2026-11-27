@@ -274,6 +274,10 @@ SARIF locations are written relative to the working directory, which is the repo
 | `JS002` | `exec(`/`execSync(` called bare, on `child_process`, on a `child_process` alias, or on `require('child_process')`; `spawn`/`execFile` of a shell with `-c` and a non-literal command | A bare `exec(` is reported only in files that mention `child_process`, so local helpers named `exec` are not reported. `RegExp.prototype.exec` and method definitions named `exec` are not reported either |
 | `JS003` | `Function(...)` with or without `new`, or `setTimeout`/`setInterval` with a string argument | Type annotations such as `cb: Function` and methods named `Function` (Babel visitors) are not reported |
 | `SRC001` | Bidirectional Unicode control characters in Python, JavaScript, TypeScript, Go, Rust, Java/Kotlin, PHP or Ruby source ([Trojan Source](https://trojansource.codes/)) | Data files such as translations are not checked; suppress intended uses inside string literals |
+| `SRC002` | A word in source code mixing Latin letters with lookalike Cyrillic or Greek letters (`pаypal` with a Cyrillic `а`) | Plain non-Latin text is not reported; the message shows the lookalike's code point |
+| `BIN001` | Committed executable or shared library (ELF, Mach-O, PE, Node native addon), recognized by its header bytes, at any size | Java class files, archives and images are not reported |
+| `OBF001` | Base64 or hex blob of 400+ characters in source code; `high` when the same file decodes data and runs code | Image, font and source-map `data:` URIs are skipped; one finding per file |
+| `OBF002` | Minified or packed source line (2000+ characters in Python, shell and other languages; 5000+ and `low` in JavaScript) | Long lines that are mostly one string or data table are skipped; one finding per file |
 | `SEC001` | AWS access key ID pattern beginning with `AKIA` | Does not validate the key or determine whether it is active |
 | `SEC002` | GitHub token patterns beginning with `ghp_`, `gho_`, `ghu_`, `ghs_`, or `ghr_` | Does not validate the token |
 | `SEC003` | Common PEM private-key headers | Detects a header, not whether the complete key is valid |
